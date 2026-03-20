@@ -1,0 +1,46 @@
+# Binaries
+ads-systweak
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
+
+# Build artifacts
+build/
+dist/
+*.tar.gz
+*.zip
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# User config (for testing)
+.ads-systweak.json
+.ads-systweak-uid
+
+# Environment files
+.env
+.env.local
