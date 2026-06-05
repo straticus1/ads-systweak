@@ -23,6 +23,22 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/></svg>
                     Defaults Editor
                 </button>
+                <button class="nav-item" data-tab="autoruns">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    Autoruns
+                </button>
+                <button class="nav-item" data-tab="tcpview">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    TCPView
+                </button>
+                <button class="nav-item" data-tab="procexp">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    Process Explorer
+                </button>
+                <button class="nav-item" data-tab="reliability">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Reliability
+                </button>
             </nav>
             <div class="sidebar-footer">
                 <p>After Dark Security</p>
@@ -89,6 +105,100 @@
                             </table>
                         </div>
                     </div>
+                </div>
+            </section>
+            <!-- AUTORUNS TAB -->
+            <section id="autoruns-tab" class="tab-pane">
+                <header class="page-header">
+                    <h2>Autoruns</h2>
+                    <button id="btn-autoruns-refresh" class="btn secondary">Refresh</button>
+                </header>
+                <div class="scroll-container" style="padding:0">
+                    <div class="table-container" style="border-radius:0;border:none;border-top:1px solid var(--border)">
+                        <table id="autoruns-table" class="data-table">
+                            <thead><tr>
+                                <th>Type</th><th>Label</th><th>Program</th><th>Source</th><th>Run at Load</th><th>Action</th>
+                            </tr></thead>
+                            <tbody><tr class="empty-state"><td colspan="6">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TCPVIEW TAB -->
+            <section id="tcpview-tab" class="tab-pane">
+                <header class="page-header">
+                    <h2>TCPView</h2>
+                    <div style="display:flex;align-items:center;gap:16px">
+                        <span id="tcpview-status" style="font-size:13px;color:var(--text-secondary)">Live</span>
+                        <label class="switch" style="cursor:pointer">
+                            <input type="checkbox" id="tcpview-live" checked>
+                            <span class="slider"></span>
+                            <span class="status-lbl" style="font-size:13px">Auto-refresh</span>
+                        </label>
+                    </div>
+                </header>
+                <div class="scroll-container" style="padding:0">
+                    <div class="table-container" style="border-radius:0;border:none;border-top:1px solid var(--border)">
+                        <table id="tcpview-table" class="data-table">
+                            <thead><tr>
+                                <th>PID</th><th>Process</th><th>Proto</th><th>Local Address</th><th>Remote Address</th><th>State</th><th>User</th>
+                            </tr></thead>
+                            <tbody><tr class="empty-state"><td colspan="7">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROCESS EXPLORER TAB -->
+            <section id="procexp-tab" class="tab-pane">
+                <header class="page-header">
+                    <h2>Process Explorer</h2>
+                    <div style="display:flex;gap:12px;align-items:center">
+                        <div class="search-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="text" id="proc-search" placeholder="Filter processes..."></div>
+                        <button id="btn-proc-refresh" class="btn secondary">Refresh</button>
+                    </div>
+                </header>
+                <div style="display:flex;flex:1;overflow:hidden">
+                    <div style="flex:1;overflow-y:auto">
+                        <div class="table-container" style="border-radius:0;border:none;border-top:1px solid var(--border)">
+                            <table id="proc-table" class="data-table">
+                                <thead><tr>
+                                    <th>PID</th><th>Name</th><th>User</th><th>%CPU</th><th>%MEM</th><th>State</th><th>Command</th>
+                                </tr></thead>
+                                <tbody><tr class="empty-state"><td colspan="7">Loading...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="proc-detail-panel" style="width:380px;border-left:1px solid var(--border);overflow-y:auto;display:none;padding:24px;font-size:13px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                            <strong id="proc-detail-title" style="font-size:15px"></strong>
+                            <button id="btn-proc-detail-close" class="btn secondary" style="padding:4px 10px;font-size:12px">&#x2715;</button>
+                        </div>
+                        <div id="proc-detail-content"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RELIABILITY MONITOR TAB -->
+            <section id="reliability-tab" class="tab-pane">
+                <header class="page-header">
+                    <h2>Reliability Monitor</h2>
+                    <button id="btn-reliability-refresh" class="btn secondary">Refresh</button>
+                </header>
+                <div class="scroll-container" style="padding:0">
+                    <div class="table-container" style="border-radius:0;border:none;border-top:1px solid var(--border)">
+                        <table id="reliability-table" class="data-table">
+                            <thead><tr>
+                                <th>Time</th><th>Type</th><th>Application</th><th>Version</th><th>OS</th><th>Summary</th>
+                            </tr></thead>
+                            <tbody><tr class="empty-state"><td colspan="6">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="reliability-detail" style="display:none;position:fixed;bottom:0;left:260px;right:0;background:var(--bg-surface);border-top:1px solid var(--border);padding:16px 40px;font-size:13px;color:var(--text-secondary)">
+                    <div style="display:flex;justify-content:space-between"><strong id="reliability-detail-title" style="color:var(--text-primary)"></strong><button id="btn-reliability-close" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:16px">&#x2715;</button></div>
+                    <div id="reliability-detail-body" style="margin-top:8px;font-family:monospace;font-size:12px;white-space:pre-wrap"></div>
                 </div>
             </section>
         </main>

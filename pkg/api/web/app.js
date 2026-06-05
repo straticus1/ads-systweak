@@ -1,4 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Shared state for new tabs (declared early so tab-switch handler can reference them)
+    let autorunsData = [];
+    let tcpLiveInterval = null;
+    let allProcesses = [];
+    const tcpLiveToggle = document.getElementById('tcpview-live');
+
     // Tab switching
     const navItems = document.querySelectorAll('.nav-item');
     const tabPanes = document.querySelectorAll('.tab-pane');
@@ -6,15 +12,32 @@ document.addEventListener('DOMContentLoaded', () => {
     navItems.forEach(item => {
         item.addEventListener('click', () => {
             const target = item.dataset.tab;
-            
+
             navItems.forEach(n => n.classList.remove('active'));
             tabPanes.forEach(t => t.classList.remove('active'));
-            
+
             item.classList.add('active');
             document.getElementById(`${target}-tab`).classList.add('active');
 
             if (target === 'defaults' && domainsList.length === 0) {
                 loadDomains();
+            } else if (target === 'autoruns' && autorunsData.length === 0) {
+                loadAutoruns();
+            } else if (target === 'tcpview') {
+                loadTCPView();
+                if (tcpLiveToggle.checked && !tcpLiveInterval) {
+                    tcpLiveInterval = setInterval(loadTCPView, 3000);
+                }
+            } else if (target === 'procexp' && allProcesses.length === 0) {
+                loadProcesses();
+            } else if (target === 'reliability') {
+                loadReliability();
+            }
+
+            // Stop tcpview auto-refresh when leaving that tab
+            if (target !== 'tcpview') {
+                clearInterval(tcpLiveInterval);
+                tcpLiveInterval = null;
             }
         });
     });
@@ -347,4 +370,203 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start
     loadTweaks();
+
+    // --- AUTORUNS ---
+    async function loadAutoruns() {
+        const tbody = document.querySelector('#autoruns-table tbody');
+        tbody.innerHTML = '<tr class="empty-state"><td colspan="6">Loading...</td></tr>';
+        try {
+            const res = await fetch('/api/autoruns');
+            autorunsData = await res.json();
+            renderAutoruns(autorunsData);
+        } catch(e) { tbody.innerHTML = '<tr class="empty-state"><td colspan="6">Failed to load</td></tr>'; }
+    }
+
+    function renderAutoruns(items) {
+        const tbody = document.querySelector('#autoruns-table tbody');
+        if (!items || items.length === 0) {
+            tbody.innerHTML = '<tr class="empty-state"><td colspan="6">No startup items found</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            const typeColor = { LaunchAgent:'#007aff', LaunchDaemon:'#ff9f0a', LoginItem:'#34c759', CronJob:'#af52de', KernelExtension:'#ff3b30' };
+            const color = typeColor[item.type] || '#8a8a93';
+            tr.innerHTML = `
+                <td><span style="color:${color};font-size:11px;font-weight:600;background:${color}1a;padding:2px 6px;border-radius:4px">${item.type}</span></td>
+                <td style="font-family:monospace;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${item.label}">${item.label}</td>
+                <td style="font-family:monospace;font-size:12px;color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${item.program}">${item.program || '—'}</td>
+                <td style="font-size:12px;color:var(--text-secondary)">${item.source || '—'}</td>
+                <td style="font-size:12px">${item.runAtLoad ? '<span style="color:#34c759">Yes</span>' : '<span style="color:var(--text-secondary)">No</span>'}</td>
+                <td>${item.readOnly ? '<span style="font-size:12px;color:var(--text-secondary)">System</span>' :
+                    `<button class="btn ${item.enabled ? 'danger-text' : 'edit-text'} autorun-toggle" data-label="${encodeURIComponent(item.label)}" data-enabled="${item.enabled}" style="font-size:12px;padding:3px 10px">${item.enabled ? 'Disable' : 'Enable'}</button>`
+                }</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        document.querySelectorAll('.autorun-toggle').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const label = decodeURIComponent(btn.dataset.label);
+                const enabled = btn.dataset.enabled === 'true';
+                const action = enabled ? 'disable' : 'enable';
+                btn.disabled = true; btn.textContent = '...';
+                try {
+                    const res = await fetch(`/api/autoruns/${encodeURIComponent(label)}/${action}`, { method: 'POST' });
+                    if (!res.ok) throw new Error(await res.text());
+                    showToast(`${action === 'disable' ? 'Disabled' : 'Enabled'}: ${label}`);
+                    loadAutoruns();
+                } catch(e) { showToast(`Failed: ${e.message}`); loadAutoruns(); }
+            });
+        });
+    }
+    document.getElementById('btn-autoruns-refresh').addEventListener('click', loadAutoruns);
+
+    // --- TCPVIEW ---
+    async function loadTCPView() {
+        try {
+            const res = await fetch('/api/tcpview');
+            const sockets = await res.json();
+            const tbody = document.querySelector('#tcpview-table tbody');
+            if (!sockets || sockets.length === 0) {
+                tbody.innerHTML = '<tr class="empty-state"><td colspan="7">No sockets found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            const stateColor = { ESTABLISHED:'#34c759', LISTEN:'#007aff', CLOSE_WAIT:'#ff9f0a', TIME_WAIT:'#ff9f0a', CLOSED:'#8a8a93' };
+            sockets.forEach(s => {
+                const tr = document.createElement('tr');
+                const color = stateColor[s.state] || '#8a8a93';
+                tr.innerHTML = `
+                    <td style="font-family:monospace;font-size:12px">${s.pid}</td>
+                    <td style="font-weight:500">${s.processName}</td>
+                    <td><span style="font-size:11px;color:#007aff;background:rgba(0,122,255,0.1);padding:2px 6px;border-radius:4px;font-family:monospace">${s.protocol}</span></td>
+                    <td style="font-family:monospace;font-size:12px">${s.localAddr}</td>
+                    <td style="font-family:monospace;font-size:12px;color:var(--text-secondary)">${s.remoteAddr || '—'}</td>
+                    <td><span style="font-size:11px;color:${color};background:${color}1a;padding:2px 6px;border-radius:4px;font-weight:600">${s.state || '—'}</span></td>
+                    <td style="font-size:12px;color:var(--text-secondary)">${s.user}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('tcpview-status').textContent = `${sockets.length} sockets · ${new Date().toLocaleTimeString()}`;
+        } catch(e) { document.querySelector('#tcpview-table tbody').innerHTML = '<tr class="empty-state"><td colspan="7">Failed to load</td></tr>'; }
+    }
+
+    tcpLiveToggle.addEventListener('change', () => {
+        if (tcpLiveToggle.checked) {
+            tcpLiveInterval = setInterval(loadTCPView, 3000);
+        } else {
+            clearInterval(tcpLiveInterval);
+        }
+    });
+
+    // --- PROCESS EXPLORER ---
+    async function loadProcesses() {
+        const tbody = document.querySelector('#proc-table tbody');
+        tbody.innerHTML = '<tr class="empty-state"><td colspan="7">Loading...</td></tr>';
+        try {
+            const res = await fetch('/api/processes');
+            allProcesses = await res.json();
+            renderProcesses(allProcesses);
+        } catch(e) { tbody.innerHTML = '<tr class="empty-state"><td colspan="7">Failed to load</td></tr>'; }
+    }
+
+    function renderProcesses(procs) {
+        const tbody = document.querySelector('#proc-table tbody');
+        tbody.innerHTML = '';
+        if (!procs || procs.length === 0) {
+            tbody.innerHTML = '<tr class="empty-state"><td colspan="7">No processes</td></tr>';
+            return;
+        }
+        procs.forEach(p => {
+            const tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            const cpuColor = p.cpu > 50 ? '#ff3b30' : p.cpu > 20 ? '#ff9f0a' : 'inherit';
+            const cmd = p.command || p.name || '';
+            tr.innerHTML = `
+                <td style="font-family:monospace;font-size:12px">${p.pid}</td>
+                <td style="font-weight:500">${p.name}</td>
+                <td style="font-size:12px;color:var(--text-secondary)">${p.user}</td>
+                <td style="font-family:monospace;font-size:12px;color:${cpuColor}">${(p.cpu||0).toFixed(1)}%</td>
+                <td style="font-family:monospace;font-size:12px">${(p.mem||0).toFixed(1)}%</td>
+                <td style="font-family:monospace;font-size:12px;color:var(--text-secondary)">${p.state||'?'}</td>
+                <td style="font-size:12px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmd}">${cmd}</td>
+            `;
+            tr.addEventListener('click', () => showProcessDetail(p));
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('proc-search').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        renderProcesses(allProcesses.filter(p => p.name.toLowerCase().includes(q) || String(p.pid).includes(q) || (p.user||'').toLowerCase().includes(q)));
+    });
+
+    async function showProcessDetail(p) {
+        const panel = document.getElementById('proc-detail-panel');
+        document.getElementById('proc-detail-title').textContent = `${p.name} (PID ${p.pid})`;
+        document.getElementById('proc-detail-content').innerHTML = '<div style="color:var(--text-secondary)">Loading...</div>';
+        panel.style.display = 'block';
+        try {
+            const res = await fetch(`/api/processes/${p.pid}`);
+            const detail = await res.json();
+            const section = (title, items) => items && items.length > 0
+                ? `<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:6px;color:var(--text-primary)">${title} <span style="font-size:11px;color:var(--text-secondary)">(${items.length})</span></div>${items.slice(0,50).map(f=>`<div style="font-family:monospace;font-size:11px;color:var(--text-secondary);word-break:break-all;margin-bottom:2px">${f}</div>`).join('')}${items.length>50?`<div style="font-size:11px;color:var(--text-secondary)">...+${items.length-50} more</div>`:''}</div>`
+                : '';
+            document.getElementById('proc-detail-content').innerHTML =
+                section('Open Files', detail.openFiles) +
+                section('Dylibs', detail.dylibs) +
+                section('Sockets', detail.sockets) +
+                section('Environment', detail.envVars) ||
+                '<div style="color:var(--text-secondary)">No additional details available (may require elevated permissions)</div>';
+        } catch(e) {
+            document.getElementById('proc-detail-content').innerHTML = '<div style="color:var(--danger)">Failed to load details</div>';
+        }
+    }
+
+    document.getElementById('btn-proc-detail-close').addEventListener('click', () => {
+        document.getElementById('proc-detail-panel').style.display = 'none';
+    });
+    document.getElementById('btn-proc-refresh').addEventListener('click', loadProcesses);
+
+    // --- RELIABILITY MONITOR ---
+    async function loadReliability() {
+        const tbody = document.querySelector('#reliability-table tbody');
+        tbody.innerHTML = '<tr class="empty-state"><td colspan="6">Loading...</td></tr>';
+        try {
+            const res = await fetch('/api/reliability');
+            const events = await res.json();
+            if (!events || events.length === 0) {
+                tbody.innerHTML = '<tr class="empty-state"><td colspan="6">No crash/hang reports found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = '';
+            const typeColor = { Crash:'#ff3b30', Hang:'#ff9f0a', Panic:'#ff3b30', Spin:'#af52de', Wakeup:'#007aff' };
+            events.forEach(ev => {
+                const tr = document.createElement('tr');
+                tr.style.cursor = 'pointer';
+                const color = typeColor[ev.type] || '#8a8a93';
+                const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '—';
+                tr.innerHTML = `
+                    <td style="font-size:12px;color:var(--text-secondary);white-space:nowrap">${ts}</td>
+                    <td><span style="font-size:11px;color:${color};background:${color}1a;padding:2px 6px;border-radius:4px;font-weight:600">${ev.type}</span></td>
+                    <td style="font-weight:500">${ev.appName}</td>
+                    <td style="font-size:12px;color:var(--text-secondary)">${ev.version||'—'}</td>
+                    <td style="font-size:12px;color:var(--text-secondary)">${ev.os||'—'}</td>
+                    <td style="font-size:12px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ev.summary||''}">${ev.summary||'—'}</td>
+                `;
+                tr.addEventListener('click', () => {
+                    document.getElementById('reliability-detail-title').textContent = `${ev.appName} — ${ev.type} at ${ts}`;
+                    document.getElementById('reliability-detail-body').textContent = ev.summary || '(no summary)';
+                    document.getElementById('reliability-detail').style.display = 'block';
+                });
+                tbody.appendChild(tr);
+            });
+        } catch(e) { tbody.innerHTML = '<tr class="empty-state"><td colspan="6">Failed to load</td></tr>'; }
+    }
+
+    document.getElementById('btn-reliability-refresh').addEventListener('click', loadReliability);
+    document.getElementById('btn-reliability-close').addEventListener('click', () => {
+        document.getElementById('reliability-detail').style.display = 'none';
+    });
 });

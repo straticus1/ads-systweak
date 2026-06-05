@@ -35,6 +35,15 @@ func StartServer() {
 	mux.HandleFunc("DELETE /api/defaults/domain/{domain}/key/{key}", handleDeleteKey)
 	mux.HandleFunc("POST /api/defaults/restore", handleRestoreDefaults)
 
+	// Sysinternals-style tools
+	mux.HandleFunc("GET /api/autoruns", HandleGetAutoruns)
+	mux.HandleFunc("POST /api/autoruns/{label}/disable", HandleDisableAutorun)
+	mux.HandleFunc("POST /api/autoruns/{label}/enable", HandleEnableAutorun)
+	mux.HandleFunc("GET /api/tcpview", HandleGetTCPView)
+	mux.HandleFunc("GET /api/processes", HandleGetProcesses)
+	mux.HandleFunc("GET /api/processes/{pid}", HandleGetProcessDetail)
+	mux.HandleFunc("GET /api/reliability", HandleGetReliability)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
