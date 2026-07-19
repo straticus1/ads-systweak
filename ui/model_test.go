@@ -104,3 +104,38 @@ func TestCanExecutePlanBlocksActionableHighRiskWorkUntilUnlocked(t *testing.T) {
 		t.Fatalf("already-blocked High-risk plan rejected by visibility guard: %v", err)
 	}
 }
+
+func TestDangerZoneStateIsSessionOnlyAndRequiresExactAcknowledgement(t *testing.T) {
+	state := NewDangerZoneState()
+	if state.Unlocked() {
+		t.Fatal("new Danger Zone state started unlocked")
+	}
+	if state.Unlock(false, tweaks.DangerUnlockPhrase) || state.Unlocked() {
+		t.Fatal("state unlocked without acknowledgement")
+	}
+	if state.Unlock(true, "I know what I am doing") || state.Unlocked() {
+		t.Fatal("state unlocked with an inexact phrase")
+	}
+	if !state.Unlock(true, tweaks.DangerUnlockPhrase) || !state.Unlocked() {
+		t.Fatal("state did not unlock after exact acknowledgement")
+	}
+
+	freshState := NewDangerZoneState()
+	if freshState.Unlocked() {
+		t.Fatal("unlock leaked into a new session state")
+	}
+}
+
+func TestNativeVisibleTweaksHidesHighRiskWhileLocked(t *testing.T) {
+	low := tweaks.NewCommandTweak("low", "Low", "", tweaks.CategoryOther, tweaks.RiskLow, "true", "true", "true", false)
+	high := tweaks.NewCommandTweak("high", "High", "", tweaks.CategoryOther, tweaks.RiskHigh, "true", "true", "true", false)
+	state := NewDangerZoneState()
+
+	if got := state.VisibleTweaks([]tweaks.Tweak{low, high}); len(got) != 1 || got[0] != low {
+		t.Fatalf("locked visible tweaks = %#v", got)
+	}
+	state.Unlock(true, tweaks.DangerUnlockPhrase)
+	if got := state.VisibleTweaks([]tweaks.Tweak{low, high}); len(got) != 2 {
+		t.Fatalf("unlocked visible tweaks = %#v", got)
+	}
+}

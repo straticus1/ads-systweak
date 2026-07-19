@@ -24,13 +24,18 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 	if err != nil || cfg == nil {
 		cfg = &state.Config{DesiredState: make(map[string]bool)}
 	}
+	dangerState := NewDangerZoneState()
+	ordinaryTweaks := tweaks.VisibleTweaks(tweaks.Registry, false)
 
 	tabs := container.NewAppTabs()
 	tabs.SetTabLocation(container.TabLocationLeading)
 
 	// Built-in Tweaks Tab (organized by category)
-	tweaksTab := buildTweaksTab(win, cfg)
+	tweaksTab := buildTweaksTab(win, cfg, ordinaryTweaks)
 	tabs.Append(container.NewTabItem("Built-in Tweaks", tweaksTab))
+
+	// High-risk tweaks remain unnamed and hidden until this process-local gate is unlocked.
+	tabs.Append(container.NewTabItem("Danger Zone", buildDangerZoneTab(win, cfg, dangerState)))
 
 	// Defaults Editor Tab (matching web interface)
 	defaultsTab := buildDefaultsEditorTab(win)
@@ -56,7 +61,7 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 
 		s = strings.ToLower(s)
 		var results []tweaks.Tweak
-		for _, t := range tweaks.Registry {
+		for _, t := range ordinaryTweaks {
 			if strings.Contains(strings.ToLower(t.Name()), s) || strings.Contains(strings.ToLower(t.Description()), s) {
 				results = append(results, t)
 			}
@@ -104,6 +109,10 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 			dialog.ShowInformation("No Changes", "The system already matches the staged state.", win)
 			return
 		}
+		if err := CanExecutePlan(plan, dangerState.Unlocked()); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
 		summary := SummarizePlan(plan)
 		if summary.Blocked > 0 {
 			dialog.ShowError(fmt.Errorf("%d change(s) are blocked because their current state could not be determined", summary.Blocked), win)
@@ -132,7 +141,7 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 	return container.NewBorder(container.NewPadded(search), container.NewPadded(bottomBar), nil, nil, contentArea)
 }
 
-func buildTweaksTab(win fyne.Window, cfg *state.Config) fyne.CanvasObject {
+func buildTweaksTab(win fyne.Window, cfg *state.Config, registry []tweaks.Tweak) fyne.CanvasObject {
 	// Create sub-tabs for each category
 	categoryTabs := container.NewAppTabs()
 	categoryTabs.SetTabLocation(container.TabLocationTop)
@@ -140,13 +149,17 @@ func buildTweaksTab(win fyne.Window, cfg *state.Config) fyne.CanvasObject {
 	categories := TweakCategories()
 
 	// Add "All" tab showing all tweaks
-	allTweaks := tweaks.Registry
-	allView := container.NewVScroll(buildCategoryList(win, allTweaks, cfg))
+	allView := container.NewVScroll(buildCategoryList(win, registry, cfg))
 	categoryTabs.Append(container.NewTabItem("All", allView))
 
 	// Add category tabs
 	for _, cat := range categories {
-		catTweaks := tweaks.GetByCategory(cat)
+		var catTweaks []tweaks.Tweak
+		for _, tweak := range registry {
+			if tweak.Category() == cat {
+				catTweaks = append(catTweaks, tweak)
+			}
+		}
 		if len(catTweaks) == 0 {
 			continue
 		}
@@ -155,6 +168,68 @@ func buildTweaksTab(win fyne.Window, cfg *state.Config) fyne.CanvasObject {
 	}
 
 	return categoryTabs
+}
+
+func buildDangerZoneTab(win fyne.Window, cfg *state.Config, dangerState *DangerZoneState) fyne.CanvasObject {
+	content := container.NewStack()
+
+	showUnlocked := func() {
+		warning := widget.NewLabel("Danger Zone is unlocked for this app session. Every staged High-risk change still requires confirmation before execution.")
+		warning.Wrapping = fyne.TextWrapWord
+		list := buildCategoryList(win, tweaks.DangerousTweaks(tweaks.Registry), cfg)
+		content.Objects = []fyne.CanvasObject{container.NewVScroll(container.NewPadded(container.NewVBox(warning, widget.NewSeparator(), list)))}
+		content.Refresh()
+	}
+
+	unlockButton := widget.NewButton("I Know What I Am Doing", func() {
+		acknowledgement := widget.NewCheck("I understand that these settings can weaken security, destabilize macOS, expose private data, or cause data loss.", nil)
+		phrase := widget.NewEntry()
+		phrase.SetPlaceHolder(tweaks.DangerUnlockPhrase)
+
+		var unlockDialog *dialog.CustomDialog
+		confirm := widget.NewButton("Unlock Danger Zone", func() {
+			if !dangerState.Unlock(acknowledgement.Checked, phrase.Text) {
+				return
+			}
+			phrase.SetText("")
+			unlockDialog.Hide()
+			showUnlocked()
+		})
+		confirm.Importance = widget.DangerImportance
+		confirm.Disable()
+		updateConfirmation := func() {
+			if tweaks.ValidateDangerUnlock(acknowledgement.Checked, phrase.Text) {
+				confirm.Enable()
+			} else {
+				confirm.Disable()
+			}
+		}
+		acknowledgement.OnChanged = func(bool) { updateConfirmation() }
+		phrase.OnChanged = func(string) { updateConfirmation() }
+
+		cancel := widget.NewButton("Cancel", func() {
+			phrase.SetText("")
+			unlockDialog.Hide()
+		})
+		warning := widget.NewLabel("High-risk controls are hidden from normal lists and search. Unlocking reveals them only until this application closes; it does not preapprove any change.")
+		warning.Wrapping = fyne.TextWrapWord
+		instruction := widget.NewLabel("Type " + tweaks.DangerUnlockPhrase + " exactly:")
+		unlockDialog = dialog.NewCustomWithoutButtons(
+			"Danger Zone Warning",
+			container.NewVBox(warning, acknowledgement, instruction, phrase, container.NewHBox(layout.NewSpacer(), cancel, confirm)),
+			win,
+		)
+		unlockDialog.Resize(fyne.NewSize(620, 300))
+		unlockDialog.Show()
+	})
+	unlockButton.Importance = widget.DangerImportance
+
+	title := widget.NewLabelWithStyle("Danger Zone Locked", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	warning := widget.NewLabel("High-risk tweaks can change security boundaries, system integrity, boot behavior, privacy, or data safety. Their names and controls are hidden until you complete the warning and confirmation process.")
+	warning.Wrapping = fyne.TextWrapWord
+	locked := container.NewCenter(container.NewPadded(container.NewVBox(title, warning, container.NewCenter(unlockButton))))
+	content.Objects = []fyne.CanvasObject{locked}
+	return content
 }
 
 func buildDefaultsEditorTab(win fyne.Window) fyne.CanvasObject {

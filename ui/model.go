@@ -26,6 +26,26 @@ type PlanSummary struct {
 	HighRisk int
 }
 
+// DangerZoneState is intentionally process-local. It has no serialization path.
+type DangerZoneState struct {
+	unlocked bool
+}
+
+func NewDangerZoneState() *DangerZoneState { return &DangerZoneState{} }
+
+func (s *DangerZoneState) Unlocked() bool { return s.unlocked }
+
+func (s *DangerZoneState) Unlock(acknowledged bool, phrase string) bool {
+	if tweaks.ValidateDangerUnlock(acknowledged, phrase) {
+		s.unlocked = true
+	}
+	return s.unlocked
+}
+
+func (s *DangerZoneState) VisibleTweaks(registry []tweaks.Tweak) []tweaks.Tweak {
+	return tweaks.VisibleTweaks(registry, s.unlocked)
+}
+
 func TweakCategories() []tweaks.TweakCategory {
 	return []tweaks.TweakCategory{
 		tweaks.CategorySystem,
