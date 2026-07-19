@@ -88,7 +88,7 @@ func init() {
 
 	// Network
 	Register(NewDefaultsTweak("disable-captive", "Disable Captive Portal", "Prevents macOS from automatically detecting and launching the captive portal login (useful for spoofing).", CategoryNetwork, RiskMedium, "/Library/Preferences/SystemConfiguration/com.apple.captive.control", "Active", "bool", false, ""))
-	
+
 	Register(NewCommandTweak(
 		"wifi-power",
 		"Keep Wi-Fi Enabled",
@@ -137,6 +137,18 @@ func init() {
 		true,
 	))
 
+	Register(NewCommandTweak(
+		"network-tcp-nodelay",
+		"Disable TCP Delayed ACK (Lower Latency)",
+		"Disables TCP delayed ACKs. Equivalent to disabling interrupt coalescing for faster network response (requires Admin).",
+		CategoryNetwork,
+		RiskLow,
+		`/usr/sbin/sysctl net.inet.tcp.delayed_ack 2>/dev/null | grep -q '0' && echo "true" || echo "false"`,
+		`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=0`,
+		`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=3`,
+		true,
+	))
+
 	// Low Level & Kernel
 	Register(NewCommandTweak(
 		"mute-chime",
@@ -158,6 +170,18 @@ func init() {
 		RiskMedium,
 		`nvram boot-args 2>/dev/null | grep -q '\-v' && echo "true" || echo "false"`,
 		`nvram boot-args="-v"`,
+		`nvram boot-args=""`,
+		true,
+	))
+
+	Register(NewCommandTweak(
+		"server-perf-mode",
+		"Enable Server Performance Mode",
+		"Tunes the XNU CPU scheduler and memory manager for server workloads instead of desktop UI. (requires Admin).",
+		CategoryLowLevel,
+		RiskHigh,
+		`nvram boot-args 2>/dev/null | grep -q 'serverperfmode=1' && echo "true" || echo "false"`,
+		`nvram boot-args="serverperfmode=1"`,
 		`nvram boot-args=""`,
 		true,
 	))
@@ -185,7 +209,7 @@ func init() {
 		`spctl --master-enable`,
 		true,
 	))
-	
+
 	Register(NewCommandTweak(
 		"disable-spotlight",
 		"Disable Spotlight Indexing",
@@ -197,7 +221,7 @@ func init() {
 		`mdutil -i on -a`,
 		true,
 	))
-	
+
 	// Time Machine
 	Register(NewDefaultsTweak("tm-no-prompt", "Time Machine: Don't Prompt for New Disks", "Prevents Time Machine from asking to use newly connected drives for backups.", CategoryDisk, RiskLow, "com.apple.TimeMachine", "DoNotOfferNewDisksForBackup", "bool", true, ""))
 	Register(NewCommandTweak(
@@ -254,6 +278,19 @@ func init() {
 		`pmset -a lidwake 0`,
 		true,
 	))
+
+	Register(NewCommandTweak(
+		"low-power-mode",
+		"Power: Enable Low Power Mode (CPU Core Parking)",
+		"Forces aggressive P-Core parking and disables Turbo Boost for battery savings at the cost of performance.",
+		CategorySystem,
+		RiskLow,
+		`pmset -g | grep -q 'lowpowermode.*1' && echo "true" || echo "false"`,
+		`pmset -a lowpowermode 1`,
+		`pmset -a lowpowermode 0`,
+		true,
+	))
+
 	Register(NewDefaultsTweak("disable-sudden-motion", "Disable Sudden Motion Sensor", "Disables the sudden motion sensor (SSD don't need it, saves CPU).", CategorySystem, RiskLow, "com.apple.PowerManagement", "Sudden-Motion-Sensor", "bool", false, ""))
 	Register(NewCommandTweak(
 		"disable-power-chime",
@@ -297,6 +334,55 @@ func init() {
 
 	// Bluetooth
 	Register(NewDefaultsTweak("bluetooth-quality", "Bluetooth: Improve Audio Quality", "Increases Bluetooth bitrate for better audio quality (may reduce battery).", CategorySystem, RiskLow, "com.apple.BluetoothAudioAgent", "Apple Bitpool Min (editable)", "int", 40, ""))
+
+	// Hidden CLI Tools
+	Register(NewCommandTweak(
+		"cli-airport",
+		"Symlink 'airport' CLI",
+		"Symlinks the hidden Wi-Fi 'airport' utility to /usr/local/bin/airport (requires Admin).",
+		CategoryHiddenCLI,
+		RiskLow,
+		`[ -L /usr/local/bin/airport ] && [ "$(readlink /usr/local/bin/airport)" = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport" ] && echo "true" || echo "false"`,
+		`mkdir -p /usr/local/bin && ln -sf /System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport /usr/local/bin/airport`,
+		`rm -f /usr/local/bin/airport`,
+		true,
+	))
+
+	Register(NewCommandTweak(
+		"cli-lsregister",
+		"Symlink 'lsregister' CLI",
+		"Symlinks the Launch Services 'lsregister' utility to /usr/local/bin/lsregister (requires Admin).",
+		CategoryHiddenCLI,
+		RiskLow,
+		`[ -L /usr/local/bin/lsregister ] && [ "$(readlink /usr/local/bin/lsregister)" = "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister" ] && echo "true" || echo "false"`,
+		`mkdir -p /usr/local/bin && ln -sf /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister /usr/local/bin/lsregister`,
+		`rm -f /usr/local/bin/lsregister`,
+		true,
+	))
+
+	Register(NewCommandTweak(
+		"cli-kickstart",
+		"Symlink 'kickstart' CLI",
+		"Symlinks the Apple Remote Desktop 'kickstart' utility to /usr/local/bin/kickstart (requires Admin).",
+		CategoryHiddenCLI,
+		RiskLow,
+		`[ -L /usr/local/bin/kickstart ] && [ "$(readlink /usr/local/bin/kickstart)" = "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart" ] && echo "true" || echo "false"`,
+		`mkdir -p /usr/local/bin && ln -sf /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart /usr/local/bin/kickstart`,
+		`rm -f /usr/local/bin/kickstart`,
+		true,
+	))
+
+	Register(NewCommandTweak(
+		"cli-plistbuddy",
+		"Symlink 'PlistBuddy' CLI",
+		"Symlinks the hidden plutil companion 'PlistBuddy' to /usr/local/bin/PlistBuddy (requires Admin).",
+		CategoryHiddenCLI,
+		RiskLow,
+		`[ -L /usr/local/bin/PlistBuddy ] && [ "$(readlink /usr/local/bin/PlistBuddy)" = "/usr/libexec/PlistBuddy" ] && echo "true" || echo "false"`,
+		`mkdir -p /usr/local/bin && ln -sf /usr/libexec/PlistBuddy /usr/local/bin/PlistBuddy`,
+		`rm -f /usr/local/bin/PlistBuddy`,
+		true,
+	))
 
 	// Other
 	Register(NewDefaultsTweak("crash-reporter", "Disable Crash Reporter", "Disables the 'Application quit unexpectedly' dialog box.", CategoryOther, RiskLow, "com.apple.CrashReporter", "DialogType", "string", "none", ""))

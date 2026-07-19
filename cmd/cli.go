@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"text/tabwriter"
 
@@ -39,6 +40,10 @@ func init() {
 	presetCmd.AddCommand(presetListCmd)
 	presetCmd.AddCommand(presetStageCmd)
 	rootCmd.AddCommand(presetCmd)
+
+	// Native Helpers
+	rootCmd.AddCommand(speedtestCmd)
+	rootCmd.AddCommand(caffeinateCmd)
 }
 
 func findTweak(id string) tweaks.Tweak {
@@ -333,5 +338,38 @@ var presetStageCmd = &cobra.Command{
 		state.SaveConfig(cfg)
 		analytics.TrackPresetStaged(match.Name, len(match.TweakIDs))
 		fmt.Println("Preset staged successfully. Run 'ads-systweak plan' to review or 'ads-systweak apply' to execute.")
+	},
+}
+
+// ========================
+// Native CLI Helpers
+// ========================
+
+var speedtestCmd = &cobra.Command{
+	Use:   "speedtest",
+	Short: "Run Apple's native networkQuality tool to test connection speed",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("Starting native macOS networkQuality speedtest...")
+		c := exec.Command("networkQuality")
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		if err := c.Run(); err != nil {
+			fmt.Printf("Speedtest exited: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
+var caffeinateCmd = &cobra.Command{
+	Use:   "caffeinate",
+	Short: "Prevent the system and display from sleeping (Press Ctrl+C to exit)",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("Caffeine mode activated. System and display will not sleep.")
+		fmt.Println("Press Ctrl+C to stop.")
+		c := exec.Command("caffeinate", "-dimsu")
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		_ = c.Run()
+		fmt.Println("\nCaffeine mode deactivated.")
 	},
 }

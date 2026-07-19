@@ -12,6 +12,7 @@ const (
 	CategoryMemory         TweakCategory = "Memory"
 	CategoryKernel         TweakCategory = "Kernel"
 	CategoryApps           TweakCategory = "Apps"
+	CategoryHiddenCLI      TweakCategory = "Hidden CLI Tools"
 	CategoryOther          TweakCategory = "Other"
 )
 
