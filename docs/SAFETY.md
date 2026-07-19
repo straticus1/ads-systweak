@@ -32,8 +32,16 @@ probes are not silently treated as “off”; planning and mutation fail closed.
 also avoid bundling High-risk tweaks.
 
 Risk labels describe likely impact, not certainty. They are not a security boundary.
-The GUI shows the plan before applying it and requires an additional confirmation for
-High-risk changes.
+Both visual interfaces exclude High-risk names and controls from ordinary lists and
+search. Their Danger Zone requires an acknowledgement and the exact phrase
+`I KNOW WHAT I AM DOING`. The unlock exists only in memory and ends when the native
+application closes or the browser page reloads. Revealing these controls does not
+preapprove them: every High-risk apply or revert still requires a separate confirmation.
+
+If configuration or the CLI previously staged actionable High-risk work, the locked
+native GUI refuses to execute that plan and directs the operator to unlock Danger Zone.
+It never applies a hidden change silently. The CLI remains visible and explicit because
+selecting a tweak ID or applying a reviewed CLI plan is already an administrative act.
 
 ## Preference receipts
 
@@ -78,6 +86,12 @@ a random CSRF token. Mutating API requests require that token; requests carrying
 Responses set a restrictive Content Security Policy plus anti-sniffing, referrer, and
 framing headers. Defaults editing accepts only strict scalar JSON values and uses the
 same backup-first execution path as other preference tweaks.
+
+The ordinary tweaks endpoint never returns High-risk metadata. Completing the Danger
+Zone acknowledgement returns a separate random capability, held only in page memory.
+Dangerous listing, apply, and revert routes require that capability in a request header
+and return `403 Forbidden` while locked. It is never placed in a cookie, URL, browser
+storage, configuration file, or rollback receipt.
 
 Loopback binding is not authentication. Do not expose this port through a proxy or
 port-forward. A future remotely accessible service would require a separate identity,

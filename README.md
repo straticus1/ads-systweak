@@ -12,7 +12,10 @@ a scriptable CLI, staged plans, risk labels, and rollback receipts.
 - Probes each tweak as applied, off, unsupported, permission denied, or errored.
 - Fails closed when current state cannot be determined.
 - Stages desired changes and shows a Terraform-style plan before applying them.
-- Requires an additional confirmation for High-risk changes in the GUI.
+- Hides High-risk tweaks behind a session-only Danger Zone warning, acknowledgement,
+  and exact typed phrase in both visual interfaces.
+- Requires a separate confirmation before every High-risk apply or revert; revealing
+  the controls never preapproves execution.
 - Saves typed preference values and supported command state before first mutation.
 - Restores from receipts only after a successful rollback.
 - Offers a local web UI protected by same-origin and CSRF checks.
@@ -60,6 +63,11 @@ from source avoids implying that an unsigned development binary is production-re
 
 `force-apply` bypasses desired-state staging, but it does not bypass compatibility,
 state-probe, backup, or execution errors.
+
+The CLI intentionally remains explicit rather than hiding IDs: selecting a High-risk
+tweak by ID or applying a reviewed CLI plan is treated as an administrative workflow.
+The native and web interfaces keep those tweaks out of ordinary lists and search until
+the operator unlocks Danger Zone for that session.
 
 ## Presets
 

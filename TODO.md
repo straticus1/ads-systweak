@@ -6,6 +6,10 @@ for supported command tweaks, guarded localhost mutations, plan confirmation, ri
 metadata, capability checks, and a modern extension inventory are implemented and
 covered by tests.
 
+The visual interfaces also hide all High-risk tweaks behind a session-only Danger
+Zone. Unlocking requires an acknowledgement and exact typed phrase; the web API
+enforces a memory-only capability, and execution retains a separate confirmation.
+
 ## Release blockers
 
 - [ ] Exercise every mutating tweak in disposable macOS VMs, recording expected
