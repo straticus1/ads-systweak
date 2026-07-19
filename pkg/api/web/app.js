@@ -1,4 +1,28 @@
 document.addEventListener('DOMContentLoaded', () => {
+    let csrfTokenPromise = null;
+
+    async function csrfToken() {
+        if (!csrfTokenPromise) {
+            csrfTokenPromise = fetch('/api/session', { cache: 'no-store' })
+                .then(res => {
+                    if (!res.ok) throw new Error('Failed to initialize secure session');
+                    return res.json();
+                })
+                .then(session => session.csrfToken);
+        }
+        return csrfTokenPromise;
+    }
+
+    async function apiFetch(url, options = {}) {
+        const method = (options.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+            const headers = new Headers(options.headers || {});
+            headers.set('X-ADS-CSRF', await csrfToken());
+            options = { ...options, headers };
+        }
+        return fetch(url, options);
+    }
+
     // Shared state for new tabs (declared early so tab-switch handler can reference them)
     let autorunsData = [];
     let tcpLiveInterval = null;
@@ -108,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkbox.disabled = true;
                 
                 try {
-                    const res = await fetch(`/api/tweaks/${t.id}/${action}`, { method: 'POST' });
+                    const res = await apiFetch(`/api/tweaks/${encodeURIComponent(t.id)}/${action}`, { method: 'POST' });
                     if (!res.ok) throw new Error(await res.text());
                     lbl.textContent = e.target.checked ? 'Enabled' : 'Disabled';
                     showToast(`Tweak ${e.target.checked ? 'Applied' : 'Reverted'} successfully`);
@@ -153,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     btnRestoreAll.textContent = "Restoring...";
                     btnRestoreAll.disabled = true;
-                    const res = await fetch('/api/defaults/restore', { method: 'POST' });
+                    const res = await apiFetch('/api/defaults/restore', { method: 'POST' });
                     if (!res.ok) throw new Error(await res.text());
                     showToast("Restored successfully. Please restart your Mac.");
                     if (currentDomain) loadDomainKeys(currentDomain);
@@ -216,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
         keysTableBody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
         
         try {
-            const res = await fetch(`/api/defaults/domain/${domain}`);
+            const res = await fetch(`/api/defaults/domain/${encodeURIComponent(domain)}`);
             if (!res.ok) throw new Error("Failed to load");
             currentKeys = await res.json();
             renderKeys(currentKeys);
@@ -289,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const k = e.target.dataset.key;
                 if (confirm(`Delete key ${k} from ${currentDomain}?`)) {
                     try {
-                        const res = await fetch(`/api/defaults/domain/${currentDomain}/key/${k}`, { method: 'DELETE' });
+                        const res = await apiFetch(`/api/defaults/domain/${encodeURIComponent(currentDomain)}/key/${encodeURIComponent(k)}`, { method: 'DELETE' });
                         if (!res.ok) throw new Error();
                         showToast(`Deleted ${k}`);
                         loadDomainKeys(currentDomain);
@@ -344,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnModalSave.textContent = 'Saving...';
 
         try {
-            const res = await fetch('/api/defaults/key', {
+            const res = await apiFetch('/api/defaults/key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -412,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const action = enabled ? 'disable' : 'enable';
                 btn.disabled = true; btn.textContent = '...';
                 try {
-                    const res = await fetch(`/api/autoruns/${encodeURIComponent(label)}/${action}`, { method: 'POST' });
+                    const res = await apiFetch(`/api/autoruns/${encodeURIComponent(label)}/${action}`, { method: 'POST' });
                     if (!res.ok) throw new Error(await res.text());
                     showToast(`${action === 'disable' ? 'Disabled' : 'Enabled'}: ${label}`);
                     loadAutoruns();
