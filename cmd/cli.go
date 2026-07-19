@@ -254,14 +254,18 @@ var preapproveCmd = &cobra.Command{
 	Short: "Add a tweak ID or Category to the auto-apply pre-approval list",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg, _ := state.LoadConfig()
-		if cfg == nil {
-			cfg = &state.Config{PreApproved: []string{}}
+		cfg, err := state.LoadConfig()
+		if err != nil {
+			fmt.Printf("Failed to load configuration: %v\n", err)
+			return
 		}
 		target := args[0]
 		if !state.IsPreApproved(cfg, target, "") {
 			cfg.PreApproved = append(cfg.PreApproved, target)
-			state.SaveConfig(cfg)
+			if err := state.SaveConfig(cfg); err != nil {
+				fmt.Printf("Failed to save configuration: %v\n", err)
+				return
+			}
 			fmt.Printf("Added '%s' to pre-approval whitelist.\n", target)
 		} else {
 			fmt.Printf("'%s' is already pre-approved.\n", target)
@@ -308,9 +312,10 @@ var presetStageCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		cfg, _ := state.LoadConfig()
-		if cfg == nil {
-			cfg = &state.Config{DesiredState: make(map[string]bool)}
+		cfg, err := state.LoadConfig()
+		if err != nil {
+			fmt.Printf("Failed to load configuration: %v\n", err)
+			return
 		}
 
 		fmt.Printf("Staging preset: %s...\n", match.Name)
@@ -318,7 +323,10 @@ var presetStageCmd = &cobra.Command{
 			cfg.DesiredState[tID] = true
 			fmt.Printf(" -> staged %s = true\n", tID)
 		}
-		state.SaveConfig(cfg)
+		if err := state.SaveConfig(cfg); err != nil {
+			fmt.Printf("Failed to save configuration: %v\n", err)
+			return
+		}
 		analytics.TrackPresetStaged(match.Name, len(match.TweakIDs))
 		fmt.Println("Preset staged successfully. Run 'ads-systweak plan' to review or 'ads-systweak apply' to execute.")
 	},

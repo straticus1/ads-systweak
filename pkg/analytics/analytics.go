@@ -2,35 +2,39 @@ package analytics
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 )
 
 // Config holds analytics configuration
 type Config struct {
-	Enabled      bool
-	EndpointURL  string
-	UserID       string // Anonymous user identifier
+	Enabled     bool
+	EndpointURL string
+	UserID      string // Anonymous user identifier
 }
 
 // Event represents an analytics event
 type Event struct {
-	EventType string                 `json:"event_type"`
-	Timestamp time.Time              `json:"timestamp"`
-	UserID    string                 `json:"user_id"`
+	EventType  string                 `json:"event_type"`
+	Timestamp  time.Time              `json:"timestamp"`
+	UserID     string                 `json:"user_id"`
 	Properties map[string]interface{} `json:"properties"`
 	SystemInfo SystemInfo             `json:"system_info"`
 }
 
 // SystemInfo contains system metadata
 type SystemInfo struct {
-	OS           string `json:"os"`
-	Arch         string `json:"arch"`
-	GoVersion    string `json:"go_version"`
-	AppVersion   string `json:"app_version"`
+	OS         string `json:"os"`
+	Arch       string `json:"arch"`
+	GoVersion  string `json:"go_version"`
+	AppVersion string `json:"app_version"`
 }
 
 var (
@@ -106,27 +110,61 @@ func getOrCreateUserID() string {
 
 	// Generate new ID
 	id := generateUserID()
-	_ = os.WriteFile(idFile, []byte(id), 0644)
+	_ = writePrivateID(idFile, []byte(id))
 	return id
 }
 
 func generateUserID() string {
-	// Use hostname + timestamp for anonymous but stable ID
-	hostname, _ := os.Hostname()
-	return hostname + "-" + time.Now().Format("20060102150405")
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return fmt.Sprintf("fallback-%d-%d", os.Getpid(), time.Now().UnixNano())
+	}
+	return hex.EncodeToString(random)
+}
+
+func writePrivateID(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".ads-systweak-uid-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 // Common event types
 const (
-	EventAppLaunched      = "app_launched"
-	EventTweakApplied     = "tweak_applied"
-	EventTweakReverted    = "tweak_reverted"
-	EventPresetStaged     = "preset_staged"
-	EventPlanViewed       = "plan_viewed"
-	EventChangesApplied   = "changes_applied"
-	EventProTabViewed     = "pro_tab_viewed"
-	EventProLinkClicked   = "pro_link_clicked"
-	EventSearchUsed       = "search_used"
+	EventAppLaunched    = "app_launched"
+	EventTweakApplied   = "tweak_applied"
+	EventTweakReverted  = "tweak_reverted"
+	EventPresetStaged   = "preset_staged"
+	EventPlanViewed     = "plan_viewed"
+	EventChangesApplied = "changes_applied"
+	EventProTabViewed   = "pro_tab_viewed"
+	EventProLinkClicked = "pro_link_clicked"
+	EventSearchUsed     = "search_used"
 )
 
 // Helper functions for common events

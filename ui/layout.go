@@ -90,7 +90,9 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 			}
 		}
 
-		_ = state.SaveConfig(cfg) // Persist desired state
+		if err := state.SaveConfig(cfg); err != nil {
+			errs = append(errs, "Save configuration: "+err.Error())
+		}
 
 		if len(errs) > 0 {
 			dialog.ShowError(errors.New(strings.Join(errs, "\n")), win)
@@ -309,7 +311,10 @@ func buildPresetsList(win fyne.Window, cfg *state.Config) fyne.CanvasObject {
 			for _, tID := range pr.TweakIDs {
 				cfg.DesiredState[tID] = true
 			}
-			_ = state.SaveConfig(cfg)
+			if err := state.SaveConfig(cfg); err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
 			dialog.ShowInformation("Staged", "Preset '"+pr.Name+"' has been staged. Click 'Apply Staged Changes' to execute.", win)
 			// Trigger UI refresh would be ideal, but for now simple dialog works.
 		})
@@ -352,7 +357,9 @@ func buildCategoryList(win fyne.Window, list []tweaks.Tweak, cfg *state.Config) 
 
 		check := widget.NewCheck(tw.Name(), func(b bool) {
 			cfg.DesiredState[tw.ID()] = b
-			_ = state.SaveConfig(cfg)
+			if err := state.SaveConfig(cfg); err != nil {
+				dialog.ShowError(err, win)
+			}
 		})
 		check.Checked = isChecked
 		if !known {
