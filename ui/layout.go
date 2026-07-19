@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
-	"sort"
 	"strings"
 
 	"ads-systweak/pkg/analytics"
@@ -68,37 +67,63 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 		contentArea.Refresh()
 	}
 
-	applyBtn := widget.NewButtonWithIcon("Apply Staged Changes", nil, func() {
-		var errs []string
-		appliedCount := 0
-		for _, item := range tweaks.BuildPlan(tweaks.Registry, cfg.DesiredState) {
-			tw := item.Tweak
-			if item.Action == tweaks.PlanBlocked {
-				errs = append(errs, tw.Name()+": state is "+string(item.Probe.State)+": "+fmt.Sprint(item.Probe.Err))
-				continue
+	var applyBtn *widget.Button
+	executePlan := func(plan []tweaks.PlanItem) {
+		applyBtn.Disable()
+		go func() {
+			var errs []string
+			appliedCount := 0
+			for _, item := range plan {
+				tw := item.Tweak
+				var applyErr error
+				if item.Action == tweaks.PlanApply {
+					applyErr = tw.Apply()
+				} else {
+					applyErr = tw.Revert()
+				}
+				if applyErr != nil {
+					errs = append(errs, tw.Name()+": "+applyErr.Error())
+				} else {
+					appliedCount++
+				}
 			}
-			var applyErr error
-			if item.Action == tweaks.PlanApply {
-				applyErr = tw.Apply()
-			} else {
-				applyErr = tw.Revert()
-			}
-			if applyErr != nil {
-				errs = append(errs, tw.Name()+": "+applyErr.Error())
-			} else {
-				appliedCount++
-			}
-		}
 
-		if err := state.SaveConfig(cfg); err != nil {
-			errs = append(errs, "Save configuration: "+err.Error())
+			fyne.Do(func() {
+				applyBtn.Enable()
+				if len(errs) > 0 {
+					dialog.ShowError(errors.New(strings.Join(errs, "\n")), win)
+				} else {
+					dialog.ShowInformation("Success", fmt.Sprintf("Applied %d staged changes successfully.", appliedCount), win)
+				}
+			})
+		}()
+	}
+	applyBtn = widget.NewButtonWithIcon("Apply Staged Changes", nil, func() {
+		plan := tweaks.BuildPlan(tweaks.Registry, cfg.DesiredState)
+		if len(plan) == 0 {
+			dialog.ShowInformation("No Changes", "The system already matches the staged state.", win)
+			return
 		}
-
-		if len(errs) > 0 {
-			dialog.ShowError(errors.New(strings.Join(errs, "\n")), win)
-		} else {
-			dialog.ShowInformation("Success", fmt.Sprintf("Applied %d staged changes successfully.", appliedCount), win)
+		summary := SummarizePlan(plan)
+		if summary.Blocked > 0 {
+			dialog.ShowError(fmt.Errorf("%d change(s) are blocked because their current state could not be determined", summary.Blocked), win)
+			return
 		}
+		message := fmt.Sprintf("Apply %d and revert %d setting(s)?", summary.Apply, summary.Revert)
+		dialog.ShowConfirm("Review Execution Plan", message, func(confirmed bool) {
+			if !confirmed {
+				return
+			}
+			if summary.HighRisk > 0 {
+				dialog.ShowConfirm("High-Risk Changes", fmt.Sprintf("This plan contains %d high-risk change(s). Continue?", summary.HighRisk), func(highRiskConfirmed bool) {
+					if highRiskConfirmed {
+						executePlan(plan)
+					}
+				}, win)
+				return
+			}
+			executePlan(plan)
+		}, win)
 	})
 	applyBtn.Importance = widget.HighImportance
 
@@ -112,17 +137,7 @@ func buildTweaksTab(win fyne.Window, cfg *state.Config) fyne.CanvasObject {
 	categoryTabs := container.NewAppTabs()
 	categoryTabs.SetTabLocation(container.TabLocationTop)
 
-	categories := []tweaks.TweakCategory{
-		tweaks.CategorySystem,
-		tweaks.CategoryDisk,
-		tweaks.CategoryNetwork,
-		tweaks.CategoryNetworkStorage,
-		tweaks.CategoryApps,
-		tweaks.CategoryLowLevel,
-		tweaks.CategoryMemory,
-		tweaks.CategoryKernel,
-		tweaks.CategoryOther,
-	}
+	categories := TweakCategories()
 
 	// Add "All" tab showing all tweaks
 	allTweaks := tweaks.Registry
@@ -143,118 +158,154 @@ func buildTweaksTab(win fyne.Window, cfg *state.Config) fyne.CanvasObject {
 }
 
 func buildDefaultsEditorTab(win fyne.Window) fyne.CanvasObject {
-	// Left sidebar: domain list
-	domainList := widget.NewList(
-		func() int { return 0 },
-		func() fyne.CanvasObject {
-			return widget.NewLabel("Loading...")
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {},
-	)
-
 	var domains []string
+	var filteredDomains []string
 	var selectedDomain string
-	var currentKeys map[string]interface{}
+	var currentRows []DefaultRow
+	selectedRow := -1
 
-	// Right side: keys table
-	keysTable := widget.NewTable(
-		func() (int, int) {
-			if currentKeys == nil {
-				return 0, 3
+	domainList := widget.NewList(
+		func() int { return len(filteredDomains) },
+		func() fyne.CanvasObject { return widget.NewLabel("domain") },
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id >= 0 && id < len(filteredDomains) {
+				obj.(*widget.Label).SetText(filteredDomains[id])
 			}
-			return len(currentKeys), 3
 		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("Key")
-		},
+	)
+	keysTable := widget.NewTable(
+		func() (int, int) { return len(currentRows), 3 },
+		func() fyne.CanvasObject { return widget.NewLabel("Key") },
 		func(id widget.TableCellID, obj fyne.CanvasObject) {
 			label := obj.(*widget.Label)
-			if currentKeys == nil {
+			if id.Row < 0 || id.Row >= len(currentRows) {
+				label.SetText("")
 				return
 			}
-
-			keys := make([]string, 0, len(currentKeys))
-			for k := range currentKeys {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-
-			if id.Row >= len(keys) {
-				return
-			}
-
-			key := keys[id.Row]
-			value := currentKeys[key]
-
+			row := currentRows[id.Row]
 			switch id.Col {
 			case 0:
-				label.SetText(key)
+				label.SetText(row.Key)
 			case 1:
-				label.SetText(fmt.Sprintf("%T", value))
+				label.SetText(row.Type)
 			case 2:
-				label.SetText(fmt.Sprintf("%v", value))
+				label.SetText(fmt.Sprintf("%v", row.Value))
 			}
 		},
 	)
 	keysTable.SetColumnWidth(0, 200)
 	keysTable.SetColumnWidth(1, 100)
 	keysTable.SetColumnWidth(2, 300)
+	keysTable.OnSelected = func(id widget.TableCellID) { selectedRow = id.Row }
 
-	// Load domains function
+	var loadKeys func(string)
 	loadDomains := func() {
-		out, err := tweaks.RunShell("defaults domains")
+		out, err := tweaks.RunCommand("/usr/bin/defaults", "domains")
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("failed to load domains: %w", err), win)
 			return
 		}
-
 		domains = strings.Split(out, ",")
 		for i := range domains {
 			domains[i] = strings.TrimSpace(domains[i])
 		}
-		sort.Strings(domains)
-
-		domainList.Length = func() int { return len(domains) }
-		domainList.CreateItem = func() fyne.CanvasObject {
-			return widget.NewLabel("domain")
-		}
-		domainList.UpdateItem = func(id widget.ListItemID, obj fyne.CanvasObject) {
-			obj.(*widget.Label).SetText(domains[id])
-		}
+		filteredDomains = FilterDomains(domains, "")
 		domainList.Refresh()
 	}
-
-	// Load keys for selected domain
-	loadKeys := func(domain string) {
-		out, err := tweaks.RunShell(fmt.Sprintf("defaults export %s -", domain))
+	loadKeys = func(domain string) {
+		out, err := tweaks.RunCommand("/usr/bin/defaults", "export", domain, "-")
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("failed to read domain: %w", err), win)
 			return
 		}
-
-		// Parse plist output (simplified - just show raw for now)
-		currentKeys = make(map[string]interface{})
-		// For now, just indicate we have data
-		lines := strings.Split(out, "\n")
-		for i, line := range lines {
-			if len(line) > 0 {
-				currentKeys[fmt.Sprintf("Key_%d", i)] = line
-			}
+		rows, err := DecodeDefaultsExport([]byte(out))
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("failed to parse domain: %w", err), win)
+			return
 		}
-
+		currentRows = rows
+		selectedRow = -1
 		keysTable.Refresh()
 	}
-
 	domainList.OnSelected = func(id widget.ListItemID) {
-		selectedDomain = domains[id]
-		loadKeys(selectedDomain)
+		if id >= 0 && id < len(filteredDomains) {
+			selectedDomain = filteredDomains[id]
+			loadKeys(selectedDomain)
+		}
 	}
-
-	// Domain search
 	domainSearch := widget.NewEntry()
 	domainSearch.SetPlaceHolder("Filter domains...")
+	domainSearch.OnChanged = func(query string) {
+		filteredDomains = FilterDomains(domains, query)
+		domainList.Refresh()
+	}
 
-	// Header with restore button
+	editBtn := widget.NewButton("Edit Selected", func() {
+		if selectedDomain == "" || selectedRow < 0 || selectedRow >= len(currentRows) {
+			dialog.ShowInformation("Select a Key", "Select a defaults key first.", win)
+			return
+		}
+		row := currentRows[selectedRow]
+		domain := selectedDomain
+		if row.Type == "array" || row.Type == "dict" {
+			dialog.ShowError(fmt.Errorf("editing %s values is not supported safely", row.Type), win)
+			return
+		}
+		entry := widget.NewEntry()
+		entry.SetText(fmt.Sprintf("%v", row.Value))
+		form := dialog.NewForm("Edit "+row.Key, "Save", "Cancel", []*widget.FormItem{widget.NewFormItem(row.Type, entry)}, func(ok bool) {
+			if !ok {
+				return
+			}
+			flag, value, err := ParseScalarInput(row.Type, entry.Text)
+			if err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+			go func() {
+				if err := backup.SaveBackup(domain, row.Key); err == nil {
+					_, err = tweaks.RunCommand("/usr/bin/defaults", "write", domain, row.Key, flag, value)
+				}
+				fyne.Do(func() {
+					if err != nil {
+						dialog.ShowError(err, win)
+						return
+					}
+					loadKeys(domain)
+				})
+			}()
+		}, win)
+		form.Show()
+	})
+
+	deleteBtn := widget.NewButton("Delete Selected", func() {
+		if selectedDomain == "" || selectedRow < 0 || selectedRow >= len(currentRows) {
+			dialog.ShowInformation("Select a Key", "Select a defaults key first.", win)
+			return
+		}
+		row := currentRows[selectedRow]
+		domain := selectedDomain
+		dialog.ShowConfirm("Delete Defaults Key", "Delete "+row.Key+" from "+domain+"?", func(ok bool) {
+			if !ok {
+				return
+			}
+			go func() {
+				err := backup.SaveBackup(domain, row.Key)
+				if err == nil {
+					_, err = tweaks.RunCommand("/usr/bin/defaults", "delete", domain, row.Key)
+				}
+				fyne.Do(func() {
+					if err != nil {
+						dialog.ShowError(err, win)
+						return
+					}
+					loadKeys(domain)
+				})
+			}()
+		}, win)
+	})
+	deleteBtn.Importance = widget.DangerImportance
+
 	restoreBtn := widget.NewButton("Restore All Backups", func() {
 		dialog.ShowConfirm("Restore All Backups",
 			"This will restore all backed-up default values. Are you sure?",
@@ -262,40 +313,34 @@ func buildDefaultsEditorTab(win fyne.Window) fyne.CanvasObject {
 				if !confirmed {
 					return
 				}
-				if err := backup.RestoreAll(); err != nil {
-					dialog.ShowError(err, win)
-				} else {
-					dialog.ShowInformation("Success", "All backups restored successfully", win)
-				}
+				go func() {
+					err := backup.RestoreAll()
+					fyne.Do(func() {
+						if err != nil {
+							dialog.ShowError(err, win)
+						} else {
+							dialog.ShowInformation("Success", "All supported backups restored successfully", win)
+						}
+					})
+				}()
 			}, win)
 	})
 	restoreBtn.Importance = widget.DangerImportance
-
-	header := container.NewBorder(nil, nil, nil, restoreBtn,
+	headerActions := container.NewHBox(editBtn, deleteBtn, restoreBtn)
+	header := container.NewBorder(nil, nil, nil, headerActions,
 		widget.NewLabelWithStyle("macOS Defaults Editor", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
-
-	// Left panel with search and domain list
 	leftPanel := container.NewBorder(
 		container.NewVBox(domainSearch),
 		nil, nil, nil,
 		container.NewScroll(domainList))
-
-	// Right panel with keys table
 	rightPanel := container.NewBorder(
-		widget.NewLabel("Select a domain to view keys"),
+		widget.NewLabel("Select a domain, then select a key to edit or delete"),
 		nil, nil, nil,
 		container.NewScroll(keysTable))
-
-	// Split layout
 	split := container.NewHSplit(leftPanel, rightPanel)
 	split.Offset = 0.3
-
-	// Main container
 	mainContainer := container.NewBorder(header, nil, nil, nil, split)
-
-	// Load domains on creation
 	loadDomains()
-
 	return mainContainer
 }
 
@@ -342,18 +387,7 @@ func buildCategoryList(win fyne.Window, list []tweaks.Tweak, cfg *state.Config) 
 
 	for _, t := range list {
 		tw := t
-		probe := tw.Probe()
-		actual := probe.Applied
-		known := probe.State == tweaks.ProbeApplied || probe.State == tweaks.ProbeOff
-
 		desired, exists := cfg.DesiredState[tw.ID()]
-		isChecked := actual
-		if exists {
-			isChecked = desired
-		} else if known {
-			// Populate initial desired state from actual to avoid unexpected diffs
-			cfg.DesiredState[tw.ID()] = actual
-		}
 
 		check := widget.NewCheck(tw.Name(), func(b bool) {
 			cfg.DesiredState[tw.ID()] = b
@@ -361,39 +395,48 @@ func buildCategoryList(win fyne.Window, list []tweaks.Tweak, cfg *state.Config) 
 				dialog.ShowError(err, win)
 			}
 		})
-		check.Checked = isChecked
-		if !known {
-			check.Disable()
+		if exists {
+			check.Checked = desired
 		}
+		check.Disable()
 
 		// Risk level badge
 		riskBadge := createRiskBadge(tw.RiskLevel())
 
-		// Category badge
-		categoryBadge := widget.NewLabel(string(tw.Category()))
-		categoryBadge.TextStyle = fyne.TextStyle{Italic: true}
-
-		// Status indicator
-		statusText := "✓ Applied"
-		statusColor := color.NRGBA{R: 0, G: 150, B: 0, A: 255} // Green
-		if !known {
-			statusText = "! " + string(probe.State)
-			statusColor = color.NRGBA{R: 180, G: 40, B: 40, A: 255}
-		} else if exists && desired != actual {
-			if desired {
-				statusText = "⋯ Pending (will apply)"
-				statusColor = color.NRGBA{R: 255, G: 140, B: 0, A: 255} // Orange
-			} else {
-				statusText = "⋯ Pending (will revert)"
-				statusColor = color.NRGBA{R: 255, G: 140, B: 0, A: 255} // Orange
-			}
-		} else if !actual {
-			statusText = "○ Not Applied"
-			statusColor = color.NRGBA{R: 128, G: 128, B: 128, A: 255} // Gray
-		}
-
-		statusLabel := canvas.NewText(statusText, statusColor)
+		statusLabel := canvas.NewText("… Checking", color.NRGBA{R: 128, G: 128, B: 128, A: 255})
 		statusLabel.TextSize = 11
+		go func() {
+			probe := tw.Probe()
+			fyne.Do(func() {
+				known := probe.State == tweaks.ProbeApplied || probe.State == tweaks.ProbeOff
+				if !known {
+					statusLabel.Text = "! " + string(probe.State)
+					statusLabel.Color = color.NRGBA{R: 180, G: 40, B: 40, A: 255}
+					statusLabel.Refresh()
+					return
+				}
+				check.Enable()
+				if !exists {
+					check.Checked = probe.Applied
+					check.Refresh()
+				}
+				switch {
+				case exists && desired != probe.Applied && desired:
+					statusLabel.Text = "⋯ Pending (will apply)"
+					statusLabel.Color = color.NRGBA{R: 255, G: 140, B: 0, A: 255}
+				case exists && desired != probe.Applied:
+					statusLabel.Text = "⋯ Pending (will revert)"
+					statusLabel.Color = color.NRGBA{R: 255, G: 140, B: 0, A: 255}
+				case probe.Applied:
+					statusLabel.Text = "✓ Applied"
+					statusLabel.Color = color.NRGBA{R: 0, G: 150, B: 0, A: 255}
+				default:
+					statusLabel.Text = "○ Not Applied"
+					statusLabel.Color = color.NRGBA{R: 128, G: 128, B: 128, A: 255}
+				}
+				statusLabel.Refresh()
+			})
+		}()
 
 		// Header with checkbox, badges, and status
 		headerRow := container.NewHBox(
