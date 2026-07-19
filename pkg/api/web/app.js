@@ -76,8 +76,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- TWEAKS LOGIC ---
     let allTweaks = [];
+    let dangerCapability = null;
     const tweaksList = document.getElementById('tweaks-list');
     const tweakSearch = document.getElementById('tweak-search');
+    const dangerLocked = document.getElementById('danger-locked');
+    const dangerUnlocked = document.getElementById('danger-unlocked');
+    const dangerAcknowledgement = document.getElementById('danger-acknowledgement');
+    const dangerPhrase = document.getElementById('danger-phrase');
+    const dangerUnlock = document.getElementById('danger-unlock');
+    const dangerTweaksList = document.getElementById('danger-tweaks-list');
 
     async function loadTweaks() {
         try {
@@ -90,8 +97,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderTweaks(tweaks) {
-        tweaksList.innerHTML = '';
+    function renderTweaks(tweaks, target = tweaksList, dangerous = false) {
+        target.innerHTML = '';
         tweaks.forEach(t => {
             const card = document.createElement('div');
             card.className = 'tweak-card';
@@ -116,12 +123,16 @@ document.addEventListener('DOMContentLoaded', () => {
             
             checkbox.addEventListener('change', async (e) => {
                 const action = e.target.checked ? 'apply' : 'revert';
-                
-                if (e.target.checked && (t.riskLevel === 'Medium' || t.riskLevel === 'High')) {
-                    const promptMsg = t.riskLevel === 'High' 
-                        ? 'WARNING: This is a HIGH RISK modification that could affect system stability or security. Are you sure you want to proceed?'
-                        : 'This is a MEDIUM RISK modification. Are you sure you want to proceed?';
-                    
+
+                if (dangerous) {
+                    const verb = e.target.checked ? 'apply' : 'revert';
+                    const promptMsg = `HIGH RISK: ${verb} “${t.name}”? This may affect system stability, security, privacy, or data.`;
+                    if (!confirm(promptMsg)) {
+                        e.target.checked = !e.target.checked;
+                        return;
+                    }
+                } else if (e.target.checked && t.riskLevel === 'Medium') {
+                    const promptMsg = 'This is a MEDIUM RISK modification. Are you sure you want to proceed?';
                     if (!confirm(promptMsg)) {
                         e.target.checked = false;
                         return;
@@ -130,9 +141,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 lbl.textContent = 'Applying...';
                 checkbox.disabled = true;
-                
+
                 try {
-                    const res = await apiFetch(`/api/tweaks/${encodeURIComponent(t.id)}/${action}`, { method: 'POST' });
+                    const headers = dangerous ? { 'X-ADS-Danger-Unlock': dangerCapability } : {};
+                    const res = await apiFetch(`/api/tweaks/${encodeURIComponent(t.id)}/${action}`, { method: 'POST', headers });
+                    if (dangerous && res.status === 403) {
+                        lockDangerZone();
+                    }
                     if (!res.ok) throw new Error(await res.text());
                     lbl.textContent = e.target.checked ? 'Enabled' : 'Disabled';
                     showToast(`Tweak ${e.target.checked ? 'Applied' : 'Reverted'} successfully`);
@@ -145,9 +160,55 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            tweaksList.appendChild(card);
+            target.appendChild(card);
         });
     }
+
+    function updateDangerUnlockButton() {
+        dangerUnlock.disabled = !dangerAcknowledgement.checked || dangerPhrase.value !== 'I KNOW WHAT I AM DOING';
+    }
+
+    function lockDangerZone() {
+        dangerCapability = null;
+        dangerAcknowledgement.checked = false;
+        dangerPhrase.value = '';
+        dangerUnlock.disabled = true;
+        dangerLocked.hidden = false;
+        dangerUnlocked.hidden = true;
+        dangerTweaksList.innerHTML = '';
+    }
+
+    dangerAcknowledgement.addEventListener('change', updateDangerUnlockButton);
+    dangerPhrase.addEventListener('input', updateDangerUnlockButton);
+    dangerUnlock.addEventListener('click', async () => {
+        dangerUnlock.disabled = true;
+        try {
+            const unlockResponse = await apiFetch('/api/session/dangerous-unlock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    acknowledged: dangerAcknowledgement.checked,
+                    phrase: dangerPhrase.value
+                })
+            });
+            if (!unlockResponse.ok) throw new Error(await unlockResponse.text());
+            const session = await unlockResponse.json();
+            dangerCapability = session.capability;
+
+            const listResponse = await apiFetch('/api/tweaks/dangerous', {
+                headers: { 'X-ADS-Danger-Unlock': dangerCapability }
+            });
+            if (!listResponse.ok) throw new Error(await listResponse.text());
+            const dangerousTweaks = await listResponse.json();
+            dangerPhrase.value = '';
+            dangerLocked.hidden = true;
+            dangerUnlocked.hidden = false;
+            renderTweaks(dangerousTweaks, dangerTweaksList, true);
+        } catch (error) {
+            lockDangerZone();
+            showToast(`Danger Zone remains locked: ${error.message}`);
+        }
+    });
 
     tweakSearch.addEventListener('input', (e) => {
         const q = e.target.value.toLowerCase();

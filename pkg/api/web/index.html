@@ -19,6 +19,10 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
                     Built-in Tweaks
                 </button>
+                <button class="nav-item danger-nav" data-tab="danger">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Danger Zone
+                </button>
                 <button class="nav-item" data-tab="defaults">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/></svg>
                     Defaults Editor
@@ -59,6 +63,35 @@
                 <div class="scroll-container">
                     <div id="tweaks-list" class="tweaks-grid">
                         <!-- Rendered via JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- DANGER ZONE TAB -->
+            <section id="danger-tab" class="tab-pane">
+                <header class="page-header danger-header">
+                    <div>
+                        <h2>Danger Zone</h2>
+                        <p>High-risk system modifications</p>
+                    </div>
+                </header>
+                <div class="scroll-container">
+                    <div id="danger-locked" class="danger-lock-card">
+                        <div class="danger-symbol">!</div>
+                        <h3>I know what I am doing</h3>
+                        <p>These controls can weaken macOS security, destabilize the system, expose private data, or cause data loss. They are hidden from normal browsing and search.</p>
+                        <p>Unlocking only reveals them for this page session. Every change still requires a separate confirmation.</p>
+                        <label class="danger-acknowledgement">
+                            <input type="checkbox" id="danger-acknowledgement">
+                            <span>I understand that these settings can have serious consequences and that I am responsible for reviewing each change.</span>
+                        </label>
+                        <label class="danger-phrase-label" for="danger-phrase">Type <strong>I KNOW WHAT I AM DOING</strong> exactly:</label>
+                        <input id="danger-phrase" class="danger-phrase" type="text" autocomplete="off" spellcheck="false">
+                        <button id="danger-unlock" class="btn danger-button" disabled>Unlock Danger Zone</button>
+                    </div>
+                    <div id="danger-unlocked" hidden>
+                        <div class="danger-session-warning">Danger Zone is unlocked for this page session. Applying or reverting a tweak still requires confirmation.</div>
+                        <div id="danger-tweaks-list" class="tweaks-grid"></div>
                     </div>
                 </div>
             </section>
