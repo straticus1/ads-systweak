@@ -175,6 +175,28 @@ func ScalarRestoreBuilder(prefix string) CommandBuilder {
 	}
 }
 
+func SymlinkApplyBuilder(destination, target string) CommandBuilder {
+	return func(captured string) (string, error) {
+		if strings.TrimSpace(captured) == "__NON_SYMLINK__" {
+			return "", fmt.Errorf("refusing to replace non-symlink at %s", destination)
+		}
+		return "mkdir -p " + shellQuote(filepath.Dir(destination)) + " && ln -sfn " + shellQuote(target) + " " + shellQuote(destination), nil
+	}
+}
+
+func SymlinkRestoreBuilder(destination string) CommandBuilder {
+	return func(captured string) (string, error) {
+		captured = strings.TrimSpace(captured)
+		if captured == "" {
+			return "rm -f " + shellQuote(destination), nil
+		}
+		if captured == "__NON_SYMLINK__" {
+			return "", fmt.Errorf("cannot restore non-symlink at %s", destination)
+		}
+		return "ln -sfn " + shellQuote(captured) + " " + shellQuote(destination), nil
+	}
+}
+
 // DNSRestoreCommand restores the exact ordered DNS server list for a service.
 func DNSRestoreCommand(service, captured string) string {
 	servers := strings.Fields(captured)

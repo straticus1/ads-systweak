@@ -1,267 +1,119 @@
 # After Dark System Tools
 
-> Unlock your Mac's hidden potential with 80+ professional-grade system tweaks
+An open-source macOS tweaker with 80+ settings for Finder, Dock, input, apps,
+networking, power, privacy, and developer workflows. It includes a native GUI,
+a scriptable CLI, staged plans, risk labels, and rollback receipts.
 
-A free, open-source macOS optimization utility that gives you granular control over system settings Apple doesn't expose in System Preferences. Built for developers, power users, and anyone who wants their Mac to work *their* way.
+> This project changes system and application preferences. Review every plan,
+> especially Medium- and High-risk changes, and keep a current backup of your Mac.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![macOS](https://img.shields.io/badge/macOS-10.15+-blue.svg)
+## What it does
 
-**By [After Dark](https://afterdarksys.com)** - Makers of professional system tools for developers and teams.
+- Probes each tweak as applied, off, unsupported, permission denied, or errored.
+- Fails closed when current state cannot be determined.
+- Stages desired changes and shows a Terraform-style plan before applying them.
+- Requires an additional confirmation for High-risk changes in the GUI.
+- Saves typed preference values and supported command state before first mutation.
+- Restores from receipts only after a successful rollback.
+- Offers a local web UI protected by same-origin and CSRF checks.
+- Keeps analytics disabled unless `ADS_ANALYTICS_ENABLED=true` is explicitly set.
 
----
+Examples include showing hidden files, Finder path/status bars, Safari's developer
+menu, faster Dock and Mission Control animations, screenshot preferences, keyboard
+and trackpad settings, firewall stealth mode, Time Machine controls, and diagnostic
+views for modern system and kernel extensions.
 
-## Why After Dark System Tools?
+## Build and run
 
-- **80+ Battle-Tested Tweaks** - Disable .DS_Store files, show hidden files, speed up animations, enable Safari dev mode, trackpad improvements, keyboard optimization, and much more
-- **Safety First** - Preview changes before applying, auto-detect current state, easy rollback
-- **Dual Interface** - Beautiful GUI or powerful CLI for automation
-- **Smart Presets** - One-click bundles: "Developer Mode", "Privacy & Hardening", "Maximum Performance"
-- **Terraform-Style Planning** - Stage changes, review the plan, then apply
-- **No Telemetry** - Open source, runs locally, your system stays yours
+Go 1.24 or later is recommended.
 
----
-
-## Quick Start
-
-### GUI Mode (Recommended)
 ```bash
+git clone https://github.com/straticus1/ads-systweak.git
+cd ads-systweak
+go build -o ads-systweak .
+
+# Native GUI
 ./ads-systweak
+
+# Local web UI
+./ads-systweak web
 ```
 
-### CLI Mode
+The application is not yet distributed as a signed and notarized release. Building
+from source avoids implying that an unsigned development binary is production-ready.
+
+## CLI workflow
+
 ```bash
-# List all available tweaks
+# Check this Mac and the system tools the application can use
+./ads-systweak doctor
+
+# Inspect available tweaks and one tweak's status
 ./ads-systweak list
+./ads-systweak status show-hidden-files
 
-# Stage a preset bundle
+# Stage, review, and apply a preset
 ./ads-systweak preset stage developer-mode
-
-# Review what will change
 ./ads-systweak plan
-
-# Apply staged changes
 ./ads-systweak apply
 ```
 
----
-
-## Featured Tweaks
-
-### Developer Essentials
-- Show hidden files and file extensions
-- Enable Safari developer menu
-- Show Finder path bar and status bar
-- TextEdit defaults to plain text
-- Disable window animations
-
-### Privacy & Security
-- Disable .DS_Store on network/USB drives
-- Block captive portal detection
-- Enable firewall stealth mode
-- Disable crash reporter dialogs
-- Disable iMessage read receipts
-
-### Performance
-- Disable Spotlight indexing
-- Remove Dock auto-hide delay
-- Speed up Mission Control animations
-- Fast Dock animations
-- Disable window animations
-
-### Low-Level Control
-- Mute startup chime
-- Enable verbose boot mode
-- Disable Gatekeeper (use cautiously!)
-- Firewall stealth mode
-
-[See all 80+ tweaks →](https://github.com/straticus1/ads-systweak/wiki/Tweaks)
-
----
-
-## Installation
-
-### Option 1: Download Binary
-```bash
-# Coming soon - Download from releases
-```
-
-### Option 2: Build from Source
-```bash
-# Clone the repository
-git clone https://github.com/straticus1/ads-systweak.git
-cd ads-systweak
-
-# Build
-go build -o ads-systweak .
-
-# Run
-./ads-systweak
-```
-
-### Option 3: Homebrew (Coming Soon)
-```bash
-brew install afterdark/tap/systweak
-```
-
----
-
-## How It Works
-
-After Dark System Tools uses a **declarative state management** approach:
-
-1. **Stage** - Check tweaks you want in the GUI or stage presets via CLI
-2. **Plan** - Review exactly what will change on your system
-3. **Apply** - Execute changes with one click (prompts for sudo when needed)
-4. **Rollback** - Revert any tweak back to macOS defaults
-
-All preferences are stored in `~/.ads-systweak.json` for easy backup and sharing.
-
----
-
-## Screenshots
-
-### Clean, Native macOS Interface
-![Main Interface](docs/screenshot-main.png)
-
-### Preset Bundles for Common Workflows
-![Presets](docs/screenshot-presets.png)
-
-### Powerful CLI for Automation
-![CLI](docs/screenshot-cli.png)
-
----
-
-## Safety & Transparency
-
-- **No Hidden Actions** - Every command is logged and shown
-- **Reversible** - All tweaks can be reverted to macOS defaults
-- **Sudo Prompts** - Explicit permission for privileged operations
-- **Open Source** - Audit the code yourself
-
----
+`force-apply` bypasses desired-state staging, but it does not bypass compatibility,
+state-probe, backup, or execution errors.
 
 ## Presets
 
-### Developer Mode
-Essential tweaks for macOS developers: show hidden files, path bar, Safari dev menu, disable animations, plain text defaults.
+- **Developer Mode** enables developer-oriented Finder, Safari, Terminal, and text
+  editing preferences.
+- **Privacy & Hardening** groups privacy-related settings and firewall hardening;
+  review the plan because availability varies by macOS release and permissions.
+- **Maximum Performance** changes interface animation delays only. It does not
+  disable security controls, search, backups, or filesystem integrity checks.
 
-### Privacy & Hardening
-Disables captive portals, crash reporters, enables stealth firewall, blocks USB tracking.
+## State and rollback
 
-### Maximum Performance
-Disables Spotlight indexing and window animations for a snappier feel on older hardware.
+Desired state and pre-approvals live in `~/.ads-systweak.json`. Preference and
+command-state receipts live in `~/.ads-systweak-backups/`. These files are written
+atomically with owner-only permissions.
 
----
+Rollback is exact for supported scalar `defaults` values and command tweaks that
+capture their original state. A receipt is retained if restoration fails. One-shot
+actions and settings for which macOS exposes no reliable prior state are not claimed
+to be reversible. See [docs/SAFETY.md](docs/SAFETY.md) for the detailed model.
 
-## Advanced Usage
+## Compatibility
 
-### CLI Examples
+- Runtime mutations are supported on macOS only; other operating systems receive a
+  warning and report mutation requirements as unsupported.
+- The current compatibility pass was exercised on macOS 15.7.4 (Intel) and checks
+  for required tools at runtime instead of assuming that every macOS release has
+  identical commands.
+- Some preferences are application- or release-specific. Missing commands, paths,
+  permissions, and unreadable state are surfaced rather than interpreted as “off.”
+- Administrator authentication is required for privileged operations.
 
-```bash
-# Check status of a specific tweak
-./ads-systweak status show-hidden-files
+Run `./ads-systweak doctor` when reporting a compatibility issue and include its
+output, the failing tweak ID, and the error message. Do not include secrets or other
+unrelated system information.
 
-# Force-apply a single tweak (bypasses state)
-./ads-systweak force-apply show-hidden-files
-
-# Pre-approve a category for automation
-./ads-systweak preapprove System
-
-# Stage multiple tweaks
-./ads-systweak preset stage privacy-hardening
-./ads-systweak plan
-./ads-systweak apply
-```
-
-### Configuration File
-Your desired state is stored in `~/.ads-systweak.json`:
-
-```json
-{
-  "desired_state": {
-    "show-hidden-files": true,
-    "dock-autohide": true,
-    "safari-dev": true
-  },
-  "pre_approved": ["System", "Apps"]
-}
-```
-
-Share this file with your team for consistent Mac setups!
-
----
-
-## Requirements
-
-- macOS 10.15 (Catalina) or later
-- Administrator access for privileged tweaks (firewall, Gatekeeper, etc.)
-
----
-
-## Building
+## Development
 
 ```bash
-# Install dependencies
-go mod download
-
-# Build for current platform
-go build -o ads-systweak .
-
-# Build for distribution
-GOOS=darwin GOARCH=amd64 go build -o ads-systweak-amd64 .
-GOOS=darwin GOARCH=arm64 go build -o ads-systweak-arm64 .
+go test ./...
+go test -race ./pkg/...
+go vet ./...
+go build ./...
 ```
 
----
+New tweaks should use direct argument execution, define explicit compatibility
+requirements, return structured probe states, declare an honest risk level, and add
+tests for apply, probe, and rollback behavior. Avoid shell-string interpolation and
+avoid promising reversibility without an exact restoration receipt.
 
-## Contributing
+## Status and roadmap
 
-We welcome contributions! This tool is free and open source to help the Mac community.
+This remains a development project. Signing/notarization, packaged releases,
+cross-version VM testing, and broader hardware testing are still outstanding. See
+[TODO.md](TODO.md) for the current roadmap.
 
-- Add new tweaks to `pkg/tweaks/registry.go`
-- Follow the existing `Tweak` interface pattern
-- Test on multiple macOS versions if possible
-- Submit a PR!
-
----
-
-## Need More Power?
-
-After Dark System Tools is our free gift to the macOS community. For teams and enterprises, check out our professional tools:
-
-### [After Dark Pro Tools](https://afterdarksys.com)
-- **Fleet Manager** - Deploy system configurations across hundreds of Macs
-- **Audit & Compliance** - Track and enforce security policies
-- **Custom Tweak Builder** - Create proprietary configuration packages
-- **Priority Support** - Direct access to our engineering team
-
-[Explore After Dark Products →](https://afterdarksys.com)
-
----
-
-## License
-
-MIT License - See [LICENSE](LICENSE) file for details.
-
----
-
-## Support
-
-- **Issues & Bugs** - [GitHub Issues](https://github.com/straticus1/ads-systweak/issues)
-- **Feature Requests** - [GitHub Discussions](https://github.com/straticus1/ads-systweak/discussions)
-- **Commercial Support** - [afterdarksys.com/contact](https://afterdarksys.com/contact)
-
----
-
-## Disclaimer
-
-These tweaks modify system settings. While all changes are reversible, use at your own risk. Always test on a non-production machine first.
-
-Some tweaks (like disabling Gatekeeper or Spotlight) reduce security. Understand what each tweak does before enabling it.
-
----
-
-**Built with ❤️ by [After Dark](https://afterdarksys.com)**
-
-[GitHub](https://github.com/straticus1/ads-systweak) • [Website](https://afterdarksys.com) • [Twitter](https://twitter.com/afterdarksys)
+Licensed under the [MIT License](LICENSE).

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -298,47 +297,58 @@ func collectCronJobs() []AutorunItem {
 }
 
 func collectKernelExtensions() []AutorunItem {
-	out, err := exec.Command("kextstat").Output()
-	if err != nil {
-		return nil
-	}
-
-	lines := strings.Split(string(out), "\n")
-	if len(lines) < 2 {
-		return nil
-	}
-
-	// Skip the header line.
 	var items []AutorunItem
-	for _, line := range lines[1:] {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	if out, _ := exec.Command("/usr/bin/kmutil", "showloaded").CombinedOutput(); len(out) > 0 {
+		items = append(items, parseKMUtilOutput(string(out))...)
+	}
+	if out, _ := exec.Command("/usr/bin/systemextensionsctl", "list").CombinedOutput(); len(out) > 0 {
+		items = append(items, parseSystemExtensionsOutput(string(out))...)
+	}
+	return items
+}
+
+func parseKMUtilOutput(output string) []AutorunItem {
+	var items []AutorunItem
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 {
 			continue
 		}
-
-		// Fields: index refs address size wired name (version)
-		// The name field (index 5, 0-based) may be followed by "(version)".
-		fields := strings.Fields(line)
-		if len(fields) < 6 {
+		name := ""
+		for _, field := range fields {
+			if strings.Contains(field, ".") && !strings.HasPrefix(field, "0x") && !strings.Contains(field, "=") {
+				name = strings.TrimSpace(strings.SplitN(field, "(", 2)[0])
+				break
+			}
+		}
+		if name == "" || name == "Name" {
 			continue
 		}
+		items = append(items, AutorunItem{Label: name, Type: "KernelExtension", Path: "N/A", Program: name, Enabled: true, Source: "kmutil", ReadOnly: true})
+	}
+	return items
+}
 
-		name := fields[5]
-		// Strip a trailing "(version)" if present.
-		name = strings.TrimRight(name, "(")
-		// Use a bytes-based approach to extract just the bundle id before any parenthesis.
-		if idx := bytes.IndexByte([]byte(name), '('); idx >= 0 {
-			name = strings.TrimSpace(name[:idx])
+func parseSystemExtensionsOutput(output string) []AutorunItem {
+	var items []AutorunItem
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.Contains(trimmed, "[") || strings.HasPrefix(trimmed, "---") {
+			continue
 		}
-
-		items = append(items, AutorunItem{
-			Label:   name,
-			Type:    "KernelExtension",
-			Path:    "N/A",
-			Program: name,
-			Enabled: true,
-			Source:  "kextstat",
-		})
+		fields := strings.Fields(trimmed)
+		bundleID := ""
+		for _, field := range fields {
+			if strings.Contains(field, ".") && !strings.HasPrefix(field, "[") {
+				bundleID = field
+				break
+			}
+		}
+		if bundleID == "" || bundleID == "bundleID" {
+			continue
+		}
+		enabled := strings.HasPrefix(trimmed, "* *") && strings.Contains(strings.ToLower(trimmed), "activated enabled")
+		items = append(items, AutorunItem{Label: bundleID, Type: "SystemExtension", Path: "N/A", Program: bundleID, Enabled: enabled, Source: "systemextensionsctl", ReadOnly: true})
 	}
 	return items
 }

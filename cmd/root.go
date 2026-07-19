@@ -5,6 +5,7 @@ import (
 	"ads-systweak/pkg/tweaks"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/spf13/cobra"
 )
@@ -38,9 +39,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	// macOS architecture check
-	if os.Getenv("GOOS") != "" && os.Getenv("GOOS") != "darwin" {
-		fmt.Fprintf(os.Stderr, "Warning: ads-systweak is designed specifically for macOS (darwin).\nYou are currently building/running for %s. Tweaks may not function correctly.\n", os.Getenv("GOOS"))
+	if warning := platformWarning(runtime.GOOS); warning != "" {
+		fmt.Fprintln(os.Stderr, warning)
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&dryRunFlag, "dry-run", false, "Simulate changes without modifying the system")
@@ -55,6 +55,13 @@ func init() {
 		analyticsEndpoint = "https://analytics.afterdarksys.com/events"
 	}
 	analytics.Initialize(analyticsEndpoint, analyticsEnabled)
+}
+
+func platformWarning(goos string) string {
+	if goos == "darwin" {
+		return ""
+	}
+	return fmt.Sprintf("Warning: ads-systweak requires macOS; current operating system is %s. Mutating commands will be unsupported.", goos)
 }
 
 func Execute() {

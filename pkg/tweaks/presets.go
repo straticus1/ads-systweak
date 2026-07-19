@@ -19,8 +19,8 @@ var Presets = []Preset{
 	},
 	{
 		Name:        "Maximum Performance",
-		Description: "Disables Spotlight indexing, animations, and optimizes system for speed on older hardware.",
-		TweakIDs:    []string{"disable-spotlight", "win-anim-off", "dock-nodly", "dock-fastanim", "expose-fast", "dock-scale-effect", "disable-sudden-motion", "tm-no-throttle", "disk-verify"},
+		Description: "Reduces interface animation delays without disabling security, search, backups, or integrity verification.",
+		TweakIDs:    []string{"win-anim-off", "dock-nodly", "dock-fastanim", "expose-fast", "dock-scale-effect"},
 	},
 	{
 		Name:        "Clean UI & Productivity",

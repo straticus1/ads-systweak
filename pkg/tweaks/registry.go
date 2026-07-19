@@ -4,7 +4,7 @@ func init() {
 	// Disk & Storage
 	Register(NewDefaultsTweak("ds-store-network", "Disable .DS_Store on Network Volumes", "Prevents the creation of .DS_Store files on SMB/NFS mounts.", CategoryNetworkStorage, RiskLow, "com.apple.desktopservices", "DSDontWriteNetworkStores", "bool", true, ""))
 	Register(NewDefaultsTweak("ds-store-usb", "Disable .DS_Store on USB Volumes", "Prevents the creation of .DS_Store files on removable USB media.", CategoryDisk, RiskLow, "com.apple.desktopservices", "DSDontWriteUSBStores", "bool", true, ""))
-	Register(NewDefaultsTweak("disk-verify", "Disable Disk Image Verification", "Skips verifying disk images (DMG) before mounting, speeding up the process.", CategoryDisk, RiskLow, "com.apple.frameworks.diskimages", "skip-verify", "bool", true, ""))
+	Register(NewDefaultsTweak("disk-verify", "Disable Disk Image Verification", "Skips integrity verification before mounting disk images. This trades safety for speed.", CategoryDisk, RiskMedium, "com.apple.frameworks.diskimages", "skip-verify", "bool", true, ""))
 
 	// System & Finder
 	Register(NewDefaultsTweak("show-hidden-files", "Show Hidden Files", "Reveals hidden items (dotfiles) in the Finder.", CategorySystem, RiskLow, "com.apple.finder", "AppleShowAllFiles", "bool", true, "Finder"))
@@ -16,7 +16,7 @@ func init() {
 	Register(NewDefaultsTweak("save-to-disk", "Save to Disk (Not iCloud) Default", "Defaults saving new documents to local disk instead of iCloud.", CategorySystem, RiskLow, "NSGlobalDomain", "NSDocumentSaveNewDocumentsToCloud", "bool", false, ""))
 	Register(NewDefaultsTweak("no-ext-warning", "Disable Extension Change Warning", "Disables the warning dialog when changing a file extension.", CategorySystem, RiskLow, "com.apple.finder", "FXEnableExtensionChangeWarning", "bool", false, "Finder"))
 	Register(NewDefaultsTweak("finder-list-view", "Finder: Default to List View", "Sets the default view style for all Finder folders to List View.", CategorySystem, RiskLow, "com.apple.finder", "FXPreferredViewStyle", "string", "Nlsv", "Finder"))
-	Register(NewDefaultsTweak("show-library", "Show ~/Library Folder", "Makes the user Library folder visible in Finder.", CategorySystem, RiskLow, "com.apple.finder", "AppleShowAllFiles", "bool", true, "Finder"))
+	Register(NewCommandTweak("show-library", "Show ~/Library Folder", "Makes the user Library folder visible in Finder.", CategorySystem, RiskLow, `ls -ldO ~/Library | grep -q 'nohidden' && echo "true" || echo "false"`, `chflags nohidden ~/Library`, `chflags hidden ~/Library`, false))
 	Register(NewDefaultsTweak("trash-no-warning", "Disable Empty Trash Warning", "Skips the 'Are you sure?' dialog when emptying the trash.", CategorySystem, RiskLow, "com.apple.finder", "WarnOnEmptyTrash", "bool", false, "Finder"))
 	Register(NewDefaultsTweak("finder-quit", "Enable Finder Quit Menu", "Adds 'Quit' to Finder's menu so you can close all windows.", CategorySystem, RiskLow, "com.apple.finder", "QuitMenuItem", "bool", true, "Finder"))
 	Register(NewDefaultsTweak("finder-default-path", "Finder: Open Home on New Window", "Sets new Finder windows to open to your home directory instead of Recents.", CategorySystem, RiskLow, "com.apple.finder", "NewWindowTarget", "string", "PfHm", "Finder"))
@@ -137,19 +137,6 @@ func init() {
 		true,
 	))
 
-	Register(NewValueCommandTweak(
-		"network-tcp-nodelay",
-		"Disable TCP Delayed ACK (Lower Latency)",
-		"Disables TCP delayed ACKs. Equivalent to disabling interrupt coalescing for faster network response (requires Admin).",
-		CategoryNetwork,
-		RiskLow,
-		`/usr/sbin/sysctl net.inet.tcp.delayed_ack 2>/dev/null | grep -q '0' && echo "true" || echo "false"`,
-		`/usr/sbin/sysctl -n net.inet.tcp.delayed_ack`,
-		StaticCommandBuilder(`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=0`),
-		ScalarRestoreBuilder(`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=`),
-		true,
-	))
-
 	// Low Level & Kernel
 	Register(NewCommandTweak(
 		"mute-chime",
@@ -172,19 +159,6 @@ func init() {
 		`nvram boot-args 2>/dev/null | grep -q '\-v' && echo "true" || echo "false"`,
 		`nvram boot-args 2>/dev/null || true`,
 		BootArgumentApplyBuilder("-v"),
-		BootArgumentRestoreBuilder,
-		true,
-	))
-
-	Register(NewValueCommandTweak(
-		"server-perf-mode",
-		"Enable Server Performance Mode",
-		"Tunes the XNU CPU scheduler and memory manager for server workloads instead of desktop UI. (requires Admin).",
-		CategoryLowLevel,
-		RiskHigh,
-		`nvram boot-args 2>/dev/null | grep -q 'serverperfmode=1' && echo "true" || echo "false"`,
-		`nvram boot-args 2>/dev/null || true`,
-		BootArgumentApplyBuilder("serverperfmode=1"),
 		BootArgumentRestoreBuilder,
 		true,
 	))
@@ -227,17 +201,6 @@ func init() {
 
 	// Time Machine
 	Register(NewDefaultsTweak("tm-no-prompt", "Time Machine: Don't Prompt for New Disks", "Prevents Time Machine from asking to use newly connected drives for backups.", CategoryDisk, RiskLow, "com.apple.TimeMachine", "DoNotOfferNewDisksForBackup", "bool", true, ""))
-	Register(NewCommandTweak(
-		"tm-disable-local-snapshots",
-		"Time Machine: Disable Local Snapshots",
-		"Disables local Time Machine snapshots to save disk space (requires Admin).",
-		CategoryDisk,
-		RiskMedium,
-		`tmutil listlocalsnapshots / 2>/dev/null | wc -l | grep -q '^0$' && echo "true" || echo "false"`,
-		`tmutil disablelocal`,
-		`tmutil enablelocal`,
-		true,
-	))
 	Register(NewValueCommandTweak(
 		"tm-no-throttle",
 		"Time Machine: Disable Backup Throttling",
@@ -272,22 +235,9 @@ func init() {
 
 	// Power Management
 	Register(NewValueCommandTweak(
-		"prevent-sleep-lid-closed",
-		"Power: Prevent Sleep When Lid Closed (External Display)",
-		"Keeps Mac awake when lid is closed and external monitor is connected (requires Admin).",
-		CategorySystem,
-		RiskMedium,
-		`pmset -g | grep -q 'lidwake.*1' && echo "true" || echo "false"`,
-		`pmset -g custom`,
-		StaticCommandBuilder(`pmset -a lidwake 1 sleep 0`),
-		PMSetRestoreBuilder("lidwake", "sleep"),
-		true,
-	))
-
-	Register(NewValueCommandTweak(
 		"low-power-mode",
-		"Power: Enable Low Power Mode (CPU Core Parking)",
-		"Forces aggressive P-Core parking and disables Turbo Boost for battery savings at the cost of performance.",
+		"Power: Enable Low Power Mode",
+		"Asks macOS to reduce energy use across all power profiles, potentially reducing performance.",
 		CategorySystem,
 		RiskLow,
 		`pmset -g | grep -q 'lowpowermode.*1' && echo "true" || echo "false"`,
@@ -336,57 +286,45 @@ func init() {
 		false,
 	))
 
-	// Bluetooth
-	Register(NewDefaultsTweak("bluetooth-quality", "Bluetooth: Improve Audio Quality", "Increases Bluetooth bitrate for better audio quality (may reduce battery).", CategorySystem, RiskLow, "com.apple.BluetoothAudioAgent", "Apple Bitpool Min (editable)", "int", 40, ""))
-
 	// Hidden CLI Tools
-	Register(NewCommandTweak(
-		"cli-airport",
-		"Symlink 'airport' CLI",
-		"Symlinks the hidden Wi-Fi 'airport' utility to /usr/local/bin/airport (requires Admin).",
-		CategoryHiddenCLI,
-		RiskLow,
-		`[ -L /usr/local/bin/airport ] && [ "$(readlink /usr/local/bin/airport)" = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport" ] && echo "true" || echo "false"`,
-		`mkdir -p /usr/local/bin && ln -sf /System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport /usr/local/bin/airport`,
-		`rm -f /usr/local/bin/airport`,
-		true,
-	))
-
-	Register(NewCommandTweak(
+	Register(RequirePaths(NewValueCommandTweak(
 		"cli-lsregister",
 		"Symlink 'lsregister' CLI",
 		"Symlinks the Launch Services 'lsregister' utility to /usr/local/bin/lsregister (requires Admin).",
 		CategoryHiddenCLI,
-		RiskLow,
+		RiskMedium,
 		`[ -L /usr/local/bin/lsregister ] && [ "$(readlink /usr/local/bin/lsregister)" = "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister" ] && echo "true" || echo "false"`,
-		`mkdir -p /usr/local/bin && ln -sf /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister /usr/local/bin/lsregister`,
-		`rm -f /usr/local/bin/lsregister`,
+		`if [ -L /usr/local/bin/lsregister ]; then readlink /usr/local/bin/lsregister; elif [ -e /usr/local/bin/lsregister ]; then echo __NON_SYMLINK__; fi`,
+		SymlinkApplyBuilder("/usr/local/bin/lsregister", "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"),
+		SymlinkRestoreBuilder("/usr/local/bin/lsregister"),
 		true,
-	))
+	), "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"))
 
-	Register(NewCommandTweak(
+	Register(RequirePaths(NewValueCommandTweak(
 		"cli-kickstart",
 		"Symlink 'kickstart' CLI",
 		"Symlinks the Apple Remote Desktop 'kickstart' utility to /usr/local/bin/kickstart (requires Admin).",
 		CategoryHiddenCLI,
-		RiskLow,
+		RiskMedium,
 		`[ -L /usr/local/bin/kickstart ] && [ "$(readlink /usr/local/bin/kickstart)" = "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart" ] && echo "true" || echo "false"`,
-		`mkdir -p /usr/local/bin && ln -sf /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart /usr/local/bin/kickstart`,
-		`rm -f /usr/local/bin/kickstart`,
+		`if [ -L /usr/local/bin/kickstart ]; then readlink /usr/local/bin/kickstart; elif [ -e /usr/local/bin/kickstart ]; then echo __NON_SYMLINK__; fi`,
+		SymlinkApplyBuilder("/usr/local/bin/kickstart", "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"),
+		SymlinkRestoreBuilder("/usr/local/bin/kickstart"),
 		true,
-	))
+	), "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart"))
 
-	Register(NewCommandTweak(
+	Register(RequirePaths(NewValueCommandTweak(
 		"cli-plistbuddy",
 		"Symlink 'PlistBuddy' CLI",
 		"Symlinks the hidden plutil companion 'PlistBuddy' to /usr/local/bin/PlistBuddy (requires Admin).",
 		CategoryHiddenCLI,
-		RiskLow,
+		RiskMedium,
 		`[ -L /usr/local/bin/PlistBuddy ] && [ "$(readlink /usr/local/bin/PlistBuddy)" = "/usr/libexec/PlistBuddy" ] && echo "true" || echo "false"`,
-		`mkdir -p /usr/local/bin && ln -sf /usr/libexec/PlistBuddy /usr/local/bin/PlistBuddy`,
-		`rm -f /usr/local/bin/PlistBuddy`,
+		`if [ -L /usr/local/bin/PlistBuddy ]; then readlink /usr/local/bin/PlistBuddy; elif [ -e /usr/local/bin/PlistBuddy ]; then echo __NON_SYMLINK__; fi`,
+		SymlinkApplyBuilder("/usr/local/bin/PlistBuddy", "/usr/libexec/PlistBuddy"),
+		SymlinkRestoreBuilder("/usr/local/bin/PlistBuddy"),
 		true,
-	))
+	), "/usr/libexec/PlistBuddy"))
 
 	// Other
 	Register(NewDefaultsTweak("crash-reporter", "Disable Crash Reporter", "Disables the 'Application quit unexpectedly' dialog box.", CategoryOther, RiskLow, "com.apple.CrashReporter", "DialogType", "string", "none", ""))

@@ -83,6 +83,26 @@ func TestScalarRestoreBuilderValidatesCapturedValue(t *testing.T) {
 	}
 }
 
+func TestSymlinkBuildersRefuseRegularFilesAndRestoreOriginalTarget(t *testing.T) {
+	apply := SymlinkApplyBuilder("/usr/local/bin/tool", "/System/tool")
+	if _, err := apply("__NON_SYMLINK__"); err == nil {
+		t.Fatal("apply builder accepted an existing regular file")
+	}
+	command, err := apply("/old/tool")
+	if err != nil || command != "mkdir -p '/usr/local/bin' && ln -sfn '/System/tool' '/usr/local/bin/tool'" {
+		t.Fatalf("apply command = %q, %v", command, err)
+	}
+	restore := SymlinkRestoreBuilder("/usr/local/bin/tool")
+	command, err = restore("/old/tool")
+	if err != nil || command != "ln -sfn '/old/tool' '/usr/local/bin/tool'" {
+		t.Fatalf("restore command = %q, %v", command, err)
+	}
+	command, err = restore("")
+	if err != nil || command != "rm -f '/usr/local/bin/tool'" {
+		t.Fatalf("empty restore command = %q, %v", command, err)
+	}
+}
+
 func TestPMSetRestoreCommandRestoresEveryPowerProfile(t *testing.T) {
 	input := "Battery Power:\n lowpowermode 1\n sleep 5\nAC Power:\n lowpowermode 0\n sleep 20\n"
 	command, err := PMSetRestoreCommand(input, "lowpowermode", "sleep")

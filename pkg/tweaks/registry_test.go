@@ -1,6 +1,8 @@
 package tweaks
 
 import (
+	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -30,6 +32,62 @@ func TestRegistryCompleteness(t *testing.T) {
 			t.Errorf("Duplicate Tweak ID found: %s", tt.ID())
 		}
 		seenIDs[tt.ID()] = true
+	}
+}
+
+func TestRequirePathsReportsUnsupportedWhenToolIsMissing(t *testing.T) {
+	base := NewCommandTweak("required", "Required", "Required", CategoryOther, RiskLow, "true", "true", "true", false)
+	tweak := RequirePaths(base, filepath.Join(t.TempDir(), "missing-tool"))
+	probe := tweak.Probe()
+	if probe.State != ProbeUnsupported || probe.Err == nil || !errors.Is(probe.Err, ErrRequirementMissing) {
+		t.Fatalf("Probe = %#v, want unsupported missing requirement", probe)
+	}
+}
+
+func TestRegistryMetadataValuesAreValid(t *testing.T) {
+	validCategories := map[TweakCategory]bool{}
+	for _, category := range []TweakCategory{CategoryDisk, CategorySystem, CategoryNetwork, CategoryNetworkStorage, CategoryLowLevel, CategoryMemory, CategoryKernel, CategoryApps, CategoryHiddenCLI, CategoryOther} {
+		validCategories[category] = true
+	}
+	for _, tweak := range Registry {
+		if !validCategories[tweak.Category()] {
+			t.Errorf("tweak %s has invalid category %q", tweak.ID(), tweak.Category())
+		}
+		switch tweak.RiskLevel() {
+		case RiskLow, RiskMedium, RiskHigh:
+		default:
+			t.Errorf("tweak %s has invalid risk %q", tweak.ID(), tweak.RiskLevel())
+		}
+	}
+}
+
+func TestRegistryExcludesObsoleteOrMisleadingTweaks(t *testing.T) {
+	blocked := map[string]bool{
+		"cli-airport":                true,
+		"network-tcp-nodelay":        true,
+		"server-perf-mode":           true,
+		"tm-disable-local-snapshots": true,
+		"prevent-sleep-lid-closed":   true,
+		"bluetooth-quality":          true,
+	}
+	for _, tweak := range Registry {
+		if blocked[tweak.ID()] {
+			t.Errorf("obsolete or misleading tweak remains registered: %s", tweak.ID())
+		}
+	}
+}
+
+func TestPresetsDoNotBundleHighRiskTweaks(t *testing.T) {
+	byID := make(map[string]Tweak, len(Registry))
+	for _, tweak := range Registry {
+		byID[tweak.ID()] = tweak
+	}
+	for _, preset := range Presets {
+		for _, id := range preset.TweakIDs {
+			if tweak := byID[id]; tweak != nil && tweak.RiskLevel() == RiskHigh {
+				t.Errorf("preset %q bundles high-risk tweak %q", preset.Name, id)
+			}
+		}
 	}
 }
 
