@@ -101,51 +101,52 @@ func init() {
 		false,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewActionTweak(
 		"flush-dns",
 		"Flush DNS Cache",
-		"Clears the mDNSResponder and dscacheutil DNS cache (Revert does nothing) requires Admin.",
+		"Clears the mDNSResponder and dscacheutil DNS cache. This is a one-shot action and cannot be reverted.",
 		CategoryNetwork,
 		RiskMedium,
-		`echo "false"`, // Always false so it can be 'Applied' to run it, but isn't persisting
 		`dscacheutil -flushcache && killall -HUP mDNSResponder`,
-		`echo "Cannot revert a cache flush"`,
 		true,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"cloudflare-dns",
 		"Use Cloudflare DNS (1.1.1.1)",
 		"Sets your Wi-Fi DNS servers to Cloudflare's fast resolvers (Requires Admin).",
 		CategoryNetwork,
 		RiskLow,
 		`networksetup -getdnsservers Wi-Fi 2>/dev/null | grep -q '1.1.1.1' && echo "true" || echo "false"`,
-		`networksetup -setdnsservers Wi-Fi 1.1.1.1 1.0.0.1`,
-		`networksetup -setdnsservers Wi-Fi empty`,
+		`networksetup -getdnsservers Wi-Fi`,
+		StaticCommandBuilder(`networksetup -setdnsservers Wi-Fi 1.1.1.1 1.0.0.1`),
+		DNSRestoreBuilder("Wi-Fi"),
 		true,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"google-dns",
 		"Use Google DNS (8.8.8.8)",
 		"Sets your Wi-Fi DNS servers to Google's public resolvers (Requires Admin).",
 		CategoryNetwork,
 		RiskLow,
 		`networksetup -getdnsservers Wi-Fi 2>/dev/null | grep -q '8.8.8.8' && echo "true" || echo "false"`,
-		`networksetup -setdnsservers Wi-Fi 8.8.8.8 8.8.4.4`,
-		`networksetup -setdnsservers Wi-Fi empty`,
+		`networksetup -getdnsservers Wi-Fi`,
+		StaticCommandBuilder(`networksetup -setdnsservers Wi-Fi 8.8.8.8 8.8.4.4`),
+		DNSRestoreBuilder("Wi-Fi"),
 		true,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"network-tcp-nodelay",
 		"Disable TCP Delayed ACK (Lower Latency)",
 		"Disables TCP delayed ACKs. Equivalent to disabling interrupt coalescing for faster network response (requires Admin).",
 		CategoryNetwork,
 		RiskLow,
 		`/usr/sbin/sysctl net.inet.tcp.delayed_ack 2>/dev/null | grep -q '0' && echo "true" || echo "false"`,
-		`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=0`,
-		`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=3`,
+		`/usr/sbin/sysctl -n net.inet.tcp.delayed_ack`,
+		StaticCommandBuilder(`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=0`),
+		ScalarRestoreBuilder(`/usr/sbin/sysctl -w net.inet.tcp.delayed_ack=`),
 		true,
 	))
 
@@ -162,27 +163,29 @@ func init() {
 		true,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"verbose-boot",
 		"Enable Verbose Boot",
 		"Shows verbose text on startup instead of the Apple logo (requires Admin).",
 		CategoryLowLevel,
 		RiskMedium,
 		`nvram boot-args 2>/dev/null | grep -q '\-v' && echo "true" || echo "false"`,
-		`nvram boot-args="-v"`,
-		`nvram boot-args=""`,
+		`nvram boot-args 2>/dev/null || true`,
+		BootArgumentApplyBuilder("-v"),
+		BootArgumentRestoreBuilder,
 		true,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"server-perf-mode",
 		"Enable Server Performance Mode",
 		"Tunes the XNU CPU scheduler and memory manager for server workloads instead of desktop UI. (requires Admin).",
 		CategoryLowLevel,
 		RiskHigh,
 		`nvram boot-args 2>/dev/null | grep -q 'serverperfmode=1' && echo "true" || echo "false"`,
-		`nvram boot-args="serverperfmode=1"`,
-		`nvram boot-args=""`,
+		`nvram boot-args 2>/dev/null || true`,
+		BootArgumentApplyBuilder("serverperfmode=1"),
+		BootArgumentRestoreBuilder,
 		true,
 	))
 
@@ -235,15 +238,16 @@ func init() {
 		`tmutil enablelocal`,
 		true,
 	))
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"tm-no-throttle",
 		"Time Machine: Disable Backup Throttling",
 		"Prevents Time Machine from throttling backups when on battery (faster backups).",
 		CategoryDisk,
 		RiskLow,
 		`sysctl debug.lowpri_throttle_enabled 2>/dev/null | grep -q '0' && echo "true" || echo "false"`,
-		`sysctl debug.lowpri_throttle_enabled=0`,
-		`sysctl debug.lowpri_throttle_enabled=1`,
+		`sysctl -n debug.lowpri_throttle_enabled`,
+		StaticCommandBuilder(`sysctl debug.lowpri_throttle_enabled=0`),
+		ScalarRestoreBuilder(`sysctl debug.lowpri_throttle_enabled=`),
 		true,
 	))
 
@@ -267,27 +271,29 @@ func init() {
 	Register(NewDefaultsTweak("console-show-debug", "Console: Show Debug Messages", "Enables debug-level log messages in Console.app.", CategoryApps, RiskLow, "com.apple.Console", "ShowDebugMessages", "bool", true, "Console"))
 
 	// Power Management
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"prevent-sleep-lid-closed",
 		"Power: Prevent Sleep When Lid Closed (External Display)",
 		"Keeps Mac awake when lid is closed and external monitor is connected (requires Admin).",
 		CategorySystem,
 		RiskMedium,
 		`pmset -g | grep -q 'lidwake.*1' && echo "true" || echo "false"`,
-		`pmset -a lidwake 1 && pmset -a sleep 0`,
-		`pmset -a lidwake 0`,
+		`pmset -g custom`,
+		StaticCommandBuilder(`pmset -a lidwake 1 sleep 0`),
+		PMSetRestoreBuilder("lidwake", "sleep"),
 		true,
 	))
 
-	Register(NewCommandTweak(
+	Register(NewValueCommandTweak(
 		"low-power-mode",
 		"Power: Enable Low Power Mode (CPU Core Parking)",
 		"Forces aggressive P-Core parking and disables Turbo Boost for battery savings at the cost of performance.",
 		CategorySystem,
 		RiskLow,
 		`pmset -g | grep -q 'lowpowermode.*1' && echo "true" || echo "false"`,
-		`pmset -a lowpowermode 1`,
-		`pmset -a lowpowermode 0`,
+		`pmset -g custom`,
+		StaticCommandBuilder(`pmset -a lowpowermode 1`),
+		PMSetRestoreBuilder("lowpowermode"),
 		true,
 	))
 
@@ -320,15 +326,13 @@ func init() {
 
 	// Security & Privacy
 	Register(NewDefaultsTweak("quarantine-no-warning", "Disable Quarantine Warning", "Skips the 'Downloaded from Internet' warning (use cautiously!).", CategorySystem, RiskHigh, "com.apple.LaunchServices", "LSQuarantine", "bool", false, ""))
-	Register(NewCommandTweak(
+	Register(NewActionTweak(
 		"clear-quarantine",
 		"Clear All Quarantine Attributes",
 		"Removes quarantine attributes from ~/Downloads (one-time action).",
 		CategorySystem,
 		RiskMedium,
-		`echo "false"`, // Always show as not applied since it's a one-time action
 		`xattr -rd com.apple.quarantine ~/Downloads`,
-		`echo "Cannot revert a one-time cleanup"`,
 		false,
 	))
 
