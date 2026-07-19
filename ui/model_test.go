@@ -86,3 +86,21 @@ func TestSummarizePlanCountsRiskAndBlockedItems(t *testing.T) {
 		t.Fatalf("summary = %#v", summary)
 	}
 }
+
+func TestCanExecutePlanBlocksActionableHighRiskWorkUntilUnlocked(t *testing.T) {
+	high := tweaks.NewCommandTweak("high", "High", "High", tweaks.CategorySystem, tweaks.RiskHigh, "true", "true", "true", false)
+	low := tweaks.NewCommandTweak("low", "Low", "Low", tweaks.CategorySystem, tweaks.RiskLow, "true", "true", "true", false)
+
+	if err := CanExecutePlan([]tweaks.PlanItem{{Tweak: high, Action: tweaks.PlanApply}}, false); err == nil {
+		t.Fatal("locked plan containing actionable High-risk work was allowed")
+	}
+	if err := CanExecutePlan([]tweaks.PlanItem{{Tweak: high, Action: tweaks.PlanRevert}}, true); err != nil {
+		t.Fatalf("unlocked High-risk plan rejected: %v", err)
+	}
+	if err := CanExecutePlan([]tweaks.PlanItem{{Tweak: low, Action: tweaks.PlanApply}}, false); err != nil {
+		t.Fatalf("locked Low-risk plan rejected: %v", err)
+	}
+	if err := CanExecutePlan([]tweaks.PlanItem{{Tweak: high, Action: tweaks.PlanBlocked}}, false); err != nil {
+		t.Fatalf("already-blocked High-risk plan rejected by visibility guard: %v", err)
+	}
+}

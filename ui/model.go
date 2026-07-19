@@ -136,3 +136,17 @@ func SummarizePlan(plan []tweaks.PlanItem) PlanSummary {
 	}
 	return summary
 }
+
+// CanExecutePlan prevents a visual interface from applying High-risk work that is
+// hidden behind its session-only Danger Zone gate.
+func CanExecutePlan(plan []tweaks.PlanItem, dangerUnlocked bool) error {
+	if dangerUnlocked {
+		return nil
+	}
+	for _, item := range plan {
+		if item.Action != tweaks.PlanBlocked && item.Tweak.RiskLevel() == tweaks.RiskHigh {
+			return errors.New("unlock Danger Zone before applying staged High-risk changes")
+		}
+	}
+	return nil
+}
