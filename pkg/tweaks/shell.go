@@ -1,27 +1,29 @@
 package tweaks
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"os/exec"
 	"strings"
+
+	"ads-systweak/pkg/execx"
 )
+
+var commandRunner execx.Runner = execx.OSRunner{}
 
 // RunShell executes an arbitrary shell command
 func RunShell(command string) (string, error) {
 	if Verbose {
 		fmt.Printf("[EXEC] %s\n", command)
 	}
-	cmd := exec.Command("sh", "-c", command)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("command failed: %s, stderr: %s, err: %w", command, stderr.String(), err)
+	return commandRunner.Run(context.Background(), "/bin/sh", "-c", command)
+}
+
+// RunCommand executes a program directly. Use this for all user-derived arguments.
+func RunCommand(name string, args ...string) (string, error) {
+	if Verbose {
+		fmt.Printf("[EXEC] %s %s\n", name, strings.Join(args, " "))
 	}
-	return strings.TrimSpace(out.String()), nil
+	return commandRunner.Run(context.Background(), name, args...)
 }
 
 // CheckDefaultsBool checks if a boolean default is set to true
@@ -29,7 +31,7 @@ func CheckDefaultsBool(domain, key string) (bool, error) {
 	out, err := RunShell(fmt.Sprintf("defaults read %s %s", domain, key))
 	if err != nil {
 		// defaults read fails if key does not exist
-		return false, nil 
+		return false, nil
 	}
 	out = strings.TrimSpace(out)
 	if out == "1" || out == "true" {
@@ -42,7 +44,7 @@ func CheckDefaultsBool(domain, key string) (bool, error) {
 func CheckDefaultsString(domain, key string) (string, error) {
 	out, err := RunShell(fmt.Sprintf("defaults read %s %s", domain, key))
 	if err != nil {
-		return "", nil 
+		return "", nil
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -77,7 +79,5 @@ func RestartApp(appName string) error {
 
 // RunPrivileged runs a script via osascript to prompt for admin privileges
 func RunPrivileged(command string) (string, error) {
-	escapedCmd := strings.ReplaceAll(command, "\"", "\\\"")
-	fullCmd := fmt.Sprintf(`osascript -e 'do shell script "%s" with administrator privileges'`, escapedCmd)
-	return RunShell(fullCmd)
+	return RunCommand("/usr/bin/osascript", "-e", execx.AdministratorScript(command))
 }
