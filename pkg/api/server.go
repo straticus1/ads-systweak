@@ -47,6 +47,10 @@ func StartServer() {
 
 func buildHandler(expectedOrigin, token string) (http.Handler, error) {
 	mux := http.NewServeMux()
+	danger, err := newDangerSession()
+	if err != nil {
+		return nil, err
+	}
 	subFS, err := fs.Sub(webFS, "web")
 	if err != nil {
 		return nil, err
@@ -57,9 +61,11 @@ func buildHandler(expectedOrigin, token string) (http.Handler, error) {
 		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(map[string]string{"csrfToken": token})
 	})
+	mux.HandleFunc("POST /api/session/dangerous-unlock", danger.handleUnlock)
 	mux.HandleFunc("GET /api/tweaks", handleGetTweaks)
-	mux.HandleFunc("POST /api/tweaks/{id}/apply", handleApplyTweak)
-	mux.HandleFunc("POST /api/tweaks/{id}/revert", handleRevertTweak)
+	mux.Handle("GET /api/tweaks/dangerous", danger.requireCapability(http.HandlerFunc(handleGetDangerousTweaks)))
+	mux.Handle("POST /api/tweaks/{id}/apply", danger.guardHighRiskMutation(http.HandlerFunc(handleApplyTweak)))
+	mux.Handle("POST /api/tweaks/{id}/revert", danger.guardHighRiskMutation(http.HandlerFunc(handleRevertTweak)))
 	mux.HandleFunc("GET /api/defaults/domains", handleGetDomains)
 	mux.HandleFunc("GET /api/defaults/domain/{domain}", handleGetDomainKeys)
 	mux.HandleFunc("POST /api/defaults/key", handleWriteKey)

@@ -19,8 +19,16 @@ type TweakInfo struct {
 }
 
 func handleGetTweaks(w http.ResponseWriter, r *http.Request) {
+	writeTweakList(w, tweaks.VisibleTweaks(tweaks.Registry, false))
+}
+
+func handleGetDangerousTweaks(w http.ResponseWriter, r *http.Request) {
+	writeTweakList(w, tweaks.DangerousTweaks(tweaks.Registry))
+}
+
+func writeTweakList(w http.ResponseWriter, registry []tweaks.Tweak) {
 	var list []TweakInfo
-	for _, tw := range tweaks.Registry {
+	for _, tw := range registry {
 		probe := tw.Probe()
 		errorText := ""
 		if probe.Err != nil {
@@ -39,7 +47,7 @@ func handleGetTweaks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	_ = json.NewEncoder(w).Encode(list)
 }
 
 func handleApplyTweak(w http.ResponseWriter, r *http.Request) {
