@@ -71,29 +71,22 @@ func BuildLayout(win fyne.Window) fyne.CanvasObject {
 	applyBtn := widget.NewButtonWithIcon("Apply Staged Changes", nil, func() {
 		var errs []string
 		appliedCount := 0
-		for _, tw := range tweaks.Registry {
-			desired, exists := cfg.DesiredState[tw.ID()]
-			if !exists {
+		for _, item := range tweaks.BuildPlan(tweaks.Registry, cfg.DesiredState) {
+			tw := item.Tweak
+			if item.Action == tweaks.PlanBlocked {
+				errs = append(errs, tw.Name()+": state is "+string(item.Probe.State)+": "+fmt.Sprint(item.Probe.Err))
 				continue
 			}
-
-			actual, err := tw.IsApplied()
-			if err != nil {
-				actual = false
+			var applyErr error
+			if item.Action == tweaks.PlanApply {
+				applyErr = tw.Apply()
+			} else {
+				applyErr = tw.Revert()
 			}
-
-			if desired != actual {
-				var applyErr error
-				if desired {
-					applyErr = tw.Apply()
-				} else {
-					applyErr = tw.Revert()
-				}
-				if applyErr != nil {
-					errs = append(errs, tw.Name()+": "+applyErr.Error())
-				} else {
-					appliedCount++
-				}
+			if applyErr != nil {
+				errs = append(errs, tw.Name()+": "+applyErr.Error())
+			} else {
+				appliedCount++
 			}
 		}
 
@@ -344,16 +337,15 @@ func buildCategoryList(win fyne.Window, list []tweaks.Tweak, cfg *state.Config) 
 
 	for _, t := range list {
 		tw := t
-		actual, err := tw.IsApplied()
-		if err != nil {
-			actual = false
-		}
+		probe := tw.Probe()
+		actual := probe.Applied
+		known := probe.State == tweaks.ProbeApplied || probe.State == tweaks.ProbeOff
 
 		desired, exists := cfg.DesiredState[tw.ID()]
 		isChecked := actual
 		if exists {
 			isChecked = desired
-		} else {
+		} else if known {
 			// Populate initial desired state from actual to avoid unexpected diffs
 			cfg.DesiredState[tw.ID()] = actual
 		}
@@ -363,6 +355,9 @@ func buildCategoryList(win fyne.Window, list []tweaks.Tweak, cfg *state.Config) 
 			_ = state.SaveConfig(cfg)
 		})
 		check.Checked = isChecked
+		if !known {
+			check.Disable()
+		}
 
 		// Risk level badge
 		riskBadge := createRiskBadge(tw.RiskLevel())
@@ -374,7 +369,10 @@ func buildCategoryList(win fyne.Window, list []tweaks.Tweak, cfg *state.Config) 
 		// Status indicator
 		statusText := "✓ Applied"
 		statusColor := color.NRGBA{R: 0, G: 150, B: 0, A: 255} // Green
-		if exists && desired != actual {
+		if !known {
+			statusText = "! " + string(probe.State)
+			statusColor = color.NRGBA{R: 180, G: 40, B: 40, A: 255}
+		} else if exists && desired != actual {
 			if desired {
 				statusText = "⋯ Pending (will apply)"
 				statusColor = color.NRGBA{R: 255, G: 140, B: 0, A: 255} // Orange

@@ -21,7 +21,7 @@ func TestRegistryCompleteness(t *testing.T) {
 		if tt.Description() == "" {
 			t.Errorf("Tweak '%s' has empty description", tt.ID())
 		}
-		
+
 		if string(tt.RiskLevel()) == "" {
 			t.Errorf("Tweak '%s' has empty risk level", tt.ID())
 		}
@@ -45,7 +45,7 @@ func TestPresets(t *testing.T) {
 		if len(p.TweakIDs) == 0 {
 			t.Errorf("Preset '%s' has no tweaks", p.Name)
 		}
-		
+
 		for _, tweakID := range p.TweakIDs {
 			found := false
 			for _, regTweak := range Registry {

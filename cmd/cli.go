@@ -69,15 +69,8 @@ var listCmd = &cobra.Command{
 		fmt.Fprintln(w, "ID\tCATEGORY\tNAME\tSTATUS")
 		fmt.Fprintln(w, "--\t--------\t----\t------")
 		for _, t := range tweaks.Registry {
-			status := "Unknown"
-			applied, err := t.IsApplied()
-			if err == nil {
-				if applied {
-					status = "Applied"
-				} else {
-					status = "Off"
-				}
-			}
+			probe := t.Probe()
+			status := string(probe.State)
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.ID(), t.Category(), t.Name(), status)
 		}
 		w.Flush()
@@ -135,12 +128,13 @@ var statusCmd = &cobra.Command{
 			fmt.Printf("Tweak '%s' not found.\n", id)
 			os.Exit(1)
 		}
-		applied, err := t.IsApplied()
-		if err != nil {
-			fmt.Printf("Error checking status: %v\n", err)
+		probe := t.Probe()
+		if probe.State != tweaks.ProbeApplied && probe.State != tweaks.ProbeOff {
+			fmt.Printf("Status: %s\n", probe.State)
+			fmt.Printf("Error checking status: %v\n", probe.Err)
 			os.Exit(1)
 		}
-		if applied {
+		if probe.Applied {
 			fmt.Println("Status: " + colorGreen + "Applied" + colorReset)
 		} else {
 			fmt.Println("Status: " + colorYellow + "Default/Off" + colorReset)
@@ -156,40 +150,36 @@ var planCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "View staged changes based on desired config vs actual system state",
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg, _ := state.LoadConfig()
-		if cfg == nil || len(cfg.DesiredState) == 0 {
+		cfg, err := state.LoadConfig()
+		if err != nil {
+			fmt.Printf("Failed to load configuration: %v\n", err)
+			return
+		}
+		if len(cfg.DesiredState) == 0 {
 			fmt.Println("No desired state configured. Use GUI to stage changes or 'preset stage <name>'.")
 			return
 		}
 
 		fmt.Println("Execution Plan:")
 		fmt.Println("----------------------------------------")
-		changes := 0
-
-		for _, tw := range tweaks.Registry {
-			desired, exists := cfg.DesiredState[tw.ID()]
-			if !exists {
-				continue
-			}
-			actual, err := tw.IsApplied()
-			if err != nil {
-				actual = false
-			}
-
-			if desired != actual {
-				changes++
-				action := colorGreen + "Apply" + colorReset
-				if !desired {
-					action = colorYellow + "Revert" + colorReset
+		plan := tweaks.BuildPlan(tweaks.Registry, cfg.DesiredState)
+		for _, item := range plan {
+			action := colorGreen + "Apply" + colorReset
+			if item.Action == tweaks.PlanRevert {
+				action = colorYellow + "Revert" + colorReset
+			} else if item.Action == tweaks.PlanBlocked {
+				action = colorRed + "Blocked: " + string(item.Probe.State) + colorReset
+				if item.Probe.Err != nil {
+					action += " (" + item.Probe.Err.Error() + ")"
 				}
-				fmt.Printf("[%s] %s -> Will be %s\n", tw.Category(), tw.Name(), action)
 			}
+			fmt.Printf("[%s] %s -> %s\n", item.Tweak.Category(), item.Tweak.Name(), action)
 		}
 
-		if changes == 0 {
+		if len(plan) == 0 {
 			fmt.Println("System matches desired configuration state. No pending changes.")
 		} else {
-			fmt.Printf("----------------------------------------\nTotal Pending Changes: %d\n", changes)
+			fmt.Printf("----------------------------------------\nTotal Pending/Blocked Changes: %d\n", len(plan))
 			fmt.Println("Run 'ads-systweak apply' to execute.")
 		}
 	},
@@ -199,68 +189,61 @@ var applyCmd = &cobra.Command{
 	Use:   "apply",
 	Short: "Apply all staged changes from the plan",
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg, _ := state.LoadConfig()
-		if cfg == nil {
-			fmt.Println("No configuration found.")
+		cfg, err := state.LoadConfig()
+		if err != nil {
+			fmt.Printf("Failed to load configuration: %v\n", err)
 			return
 		}
 
-		changes := 0
+		plan := tweaks.BuildPlan(tweaks.Registry, cfg.DesiredState)
 		reader := bufio.NewReader(os.Stdin)
 
-		for _, tw := range tweaks.Registry {
-			desired, exists := cfg.DesiredState[tw.ID()]
-			if !exists {
+		for _, item := range plan {
+			tw := item.Tweak
+			if item.Action == tweaks.PlanBlocked {
+				fmt.Printf(colorRed+"BLOCKED [%s]: state is %s: %v"+colorReset+"\n", tw.Name(), item.Probe.State, item.Probe.Err)
 				continue
 			}
-			actual, err := tw.IsApplied()
-			if err != nil {
-				actual = false
+			action := "Apply"
+			if item.Action == tweaks.PlanRevert {
+				action = "Revert"
 			}
 
-			if desired != actual {
-				changes++
-				action := "Apply"
-				if !desired {
-					action = "Revert"
-				}
+			preApproved := state.IsPreApproved(cfg, tw.ID(), string(tw.Category()))
 
-				preApproved := state.IsPreApproved(cfg, tw.ID(), string(tw.Category()))
-
-				if !preApproved {
-					fmt.Printf("Tweak [%s] is pending: %s. Execute? [y/N]: ", tw.Name(), action)
-					response, _ := reader.ReadString('\n')
-					response = strings.TrimSpace(strings.ToLower(response))
-					if response != "y" && response != "yes" {
-						fmt.Println("Skipping.")
-						continue
-					}
-				} else {
-					fmt.Printf("Auto-approving (pre-approved) [%s]: %s\n", tw.Name(), action)
+			if !preApproved {
+				fmt.Printf("Tweak [%s] is pending: %s. Execute? [y/N]: ", tw.Name(), action)
+				response, _ := reader.ReadString('\n')
+				response = strings.TrimSpace(strings.ToLower(response))
+				if response != "y" && response != "yes" {
+					fmt.Println("Skipping.")
+					continue
 				}
+			} else {
+				fmt.Printf("Auto-approving (pre-approved) [%s]: %s\n", tw.Name(), action)
+			}
 
-				var applyErr error
-				if desired {
-					applyErr = tw.Apply()
-					if applyErr == nil {
-						analytics.TrackTweakApplied(tw.ID(), string(tw.Category()))
-					}
-				} else {
-					applyErr = tw.Revert()
-					if applyErr == nil {
-						analytics.TrackTweakReverted(tw.ID(), string(tw.Category()))
-					}
+			var applyErr error
+			if item.Action == tweaks.PlanApply {
+				applyErr = tw.Apply()
+				if applyErr == nil {
+					analytics.TrackTweakApplied(tw.ID(), string(tw.Category()))
 				}
+			} else {
+				applyErr = tw.Revert()
+				if applyErr == nil {
+					analytics.TrackTweakReverted(tw.ID(), string(tw.Category()))
+				}
+			}
 
-				if applyErr != nil {
-					fmt.Printf(colorRed+"ERROR: %v"+colorReset+"\n", applyErr)
-				} else {
-					fmt.Println(colorGreen + "SUCCESS." + colorReset)
-				}
+			if applyErr != nil {
+				fmt.Printf(colorRed+"ERROR: %v"+colorReset+"\n", applyErr)
+			} else {
+				fmt.Println(colorGreen + "SUCCESS." + colorReset)
 			}
 		}
 
-		if changes == 0 {
+		if len(plan) == 0 {
 			fmt.Println("No pending changes to apply.")
 		}
 	},

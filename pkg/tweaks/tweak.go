@@ -24,6 +24,24 @@ const (
 	RiskHigh   RiskLevel = "High"
 )
 
+// ProbeState describes what is known about a tweak without collapsing errors into "off".
+type ProbeState string
+
+const (
+	ProbeApplied          ProbeState = "applied"
+	ProbeOff              ProbeState = "off"
+	ProbeUnsupported      ProbeState = "unsupported"
+	ProbePermissionDenied ProbeState = "permission_denied"
+	ProbeError            ProbeState = "error"
+)
+
+// ProbeResult is the observed state and any reason it could not be determined.
+type ProbeResult struct {
+	State   ProbeState
+	Applied bool
+	Err     error
+}
+
 // Tweak represents a single configurable setting
 type Tweak interface {
 	ID() string          // Unique identifier, used in CLI (e.g., "show-hidden-files")
@@ -32,6 +50,7 @@ type Tweak interface {
 	Category() TweakCategory
 	RiskLevel() RiskLevel
 
+	Probe() ProbeResult
 	IsApplied() (bool, error) // Returns true if the tweak is currently active
 	Apply() error             // Enables the tweak
 	Revert() error            // Disables the tweak

@@ -37,26 +37,32 @@ func (d *DefaultsTweak) Category() TweakCategory { return d.cat }
 func (d *DefaultsTweak) RiskLevel() RiskLevel    { return d.risk }
 
 func (d *DefaultsTweak) IsApplied() (bool, error) {
-	out, err := RunShell(fmt.Sprintf("defaults read %s %s", d.domain, d.key))
+	result := d.Probe()
+	return result.Applied, result.Err
+}
+
+func (d *DefaultsTweak) Probe() ProbeResult {
+	out, err := RunCommand("/usr/bin/defaults", "read", d.domain, d.key)
 	if err != nil {
-		return false, nil // Assume not applied if key is missing
+		return classifyProbeError(err, true)
 	}
 	out = strings.TrimSpace(out)
 
 	if d.valType == "bool" {
-		expected := "0"
-		if v, ok := d.targetVal.(bool); ok {
-			if v {
-				expected = "1"
-			}
-		} else {
-			return false, fmt.Errorf("internal type error: expected bool for %s", d.ID())
+		target, ok := d.targetVal.(bool)
+		if !ok {
+			err := fmt.Errorf("internal type error: expected bool for %s", d.ID())
+			return ProbeResult{State: ProbeError, Err: err}
 		}
-
-		return out == expected || out == "true" || out == fmt.Sprintf("%v", d.targetVal), nil
+		actual, ok := parseDefaultsBool(out)
+		if !ok {
+			err := fmt.Errorf("unexpected boolean value %q for %s", out, d.ID())
+			return ProbeResult{State: ProbeError, Err: err}
+		}
+		return appliedProbe(actual == target)
 	}
 
-	return out == fmt.Sprintf("%v", d.targetVal), nil
+	return appliedProbe(out == fmt.Sprintf("%v", d.targetVal))
 }
 
 func (d *DefaultsTweak) Apply() error {
@@ -158,11 +164,49 @@ func (c *CommandTweak) Category() TweakCategory { return c.cat }
 func (c *CommandTweak) RiskLevel() RiskLevel    { return c.risk }
 
 func (c *CommandTweak) IsApplied() (bool, error) {
+	result := c.Probe()
+	return result.Applied, result.Err
+}
+
+func (c *CommandTweak) Probe() ProbeResult {
 	out, err := RunShell(c.checkCmd)
 	if err != nil {
-		return false, nil
+		return classifyProbeError(err, false)
 	}
-	return strings.TrimSpace(out) == "true" || strings.TrimSpace(out) == "1" || strings.TrimSpace(out) == "yes", nil
+	normalized := strings.ToLower(strings.TrimSpace(out))
+	return appliedProbe(normalized == "true" || normalized == "1" || normalized == "yes")
+}
+
+func parseDefaultsBool(value string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes":
+		return true, true
+	case "0", "false", "no":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func appliedProbe(applied bool) ProbeResult {
+	if applied {
+		return ProbeResult{State: ProbeApplied, Applied: true}
+	}
+	return ProbeResult{State: ProbeOff}
+}
+
+func classifyProbeError(err error, missingIsOff bool) ProbeResult {
+	text := strings.ToLower(err.Error())
+	if missingIsOff && (strings.Contains(text, "does not exist") || strings.Contains(text, "not found")) {
+		return ProbeResult{State: ProbeOff}
+	}
+	if strings.Contains(text, "permission denied") || strings.Contains(text, "not permitted") || strings.Contains(text, "not authorized") {
+		return ProbeResult{State: ProbePermissionDenied, Err: err}
+	}
+	if strings.Contains(text, "executable file not found") || strings.Contains(text, "no such file or directory") {
+		return ProbeResult{State: ProbeUnsupported, Err: err}
+	}
+	return ProbeResult{State: ProbeError, Err: err}
 }
 
 func (c *CommandTweak) Apply() error {
