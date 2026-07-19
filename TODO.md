@@ -1,292 +1,74 @@
-# After Dark System Tools - Roadmap
+# Roadmap
 
-## Pre-Launch (v1.0) - PRIORITY
+The initial safety overhaul is complete: direct argument execution, structured probe
+states, typed first-write rollback receipts, atomic private state, exact restoration
+for supported command tweaks, guarded localhost mutations, plan confirmation, risk
+metadata, capability checks, and a modern extension inventory are implemented and
+covered by tests.
 
-### Critical for Public Release
-- [ ] Add LICENSE file (MIT recommended)
-- [ ] Create screenshot assets for README
-  - [ ] Main UI with tweaks tab
-  - [ ] Presets tab
-  - [ ] CLI usage examples
-- [ ] Code signing for macOS binary
-- [ ] Create GitHub repository
-  - [ ] Set proper topics: `macos`, `system-tweaks`, `optimization`, `golang`, `fyne`
-  - [ ] Add repository description with keywords
-  - [ ] Enable Discussions for community
-- [ ] Add version flag (`--version`)
-- [ ] macOS version compatibility check on startup
+## Release blockers
 
-### Safety & UX Improvements
-- [ ] Add risk levels to tweaks (Low/Medium/High)
-  - [ ] Visual indicators in UI (green/yellow/red badges)
-  - [ ] Warning dialogs for High-risk tweaks
-- [ ] Backup mechanism
-  - [ ] Save original values before first apply
-  - [ ] "Restore All Defaults" button
-  - [ ] Export backup to file
-- [ ] Better error messages
-  - [ ] Specific guidance when commands fail
-  - [ ] Check for sudo access before privileged operations
-  - [ ] Helpful hints for common errors
-- [ ] Show which tweaks require restart in UI
-- [ ] Confirmation dialog for dangerous operations (Gatekeeper, Spotlight)
+- [ ] Exercise every mutating tweak in disposable macOS VMs, recording expected
+  apply/probe/revert behavior for each supported OS release.
+- [ ] Run hardware-specific checks on Intel and Apple silicon Macs, especially NVRAM,
+  power, networking, firewall, and security-related operations.
+- [ ] Decide and document the supported macOS version range from that test matrix.
+- [ ] Add CI for unit tests, race tests, vet, builds, and registry validation.
+- [ ] Produce a signed, hardened-runtime, notarized universal application bundle.
+- [ ] Add release automation, checksums, a changelog, and installation instructions.
+- [ ] Capture current screenshots only after the release UI is frozen.
 
-### Distribution
-- [ ] Build script / Makefile
-  - [ ] Build for arm64 and amd64
-  - [ ] Create universal binary
-- [ ] GitHub Actions workflow
-  - [ ] Auto-build on tag
-  - [ ] Create releases with binaries
-- [ ] Homebrew tap setup
-  - [ ] Create formula
-  - [ ] Setup afterdark/homebrew-tap repo
-  - [ ] Test installation flow
+## Safety and correctness
 
----
+- [ ] Add VM integration tests that verify actual state before and after rollback.
+- [ ] Add an in-app receipt inspector/export flow without exposing unrelated values.
+- [ ] Add a “restore all” preview showing exactly which receipts are actionable.
+- [ ] Replace remaining legacy privileged command strings with narrowly typed helpers.
+- [ ] Audit every registry entry against current Apple behavior and attach provenance
+  and last-tested OS/build metadata.
+- [ ] Define timeouts and cancellation for long-running external tools.
+- [ ] Add structured, redacted audit logs for plans and command outcomes.
 
-## Marketing & Growth
+## macOS-native capabilities
 
-### Launch Strategy
-- [ ] Product Hunt launch
-  - [ ] Prepare tagline: "Unlock your Mac's hidden potential"
-  - [ ] Create demo video/GIF
-  - [ ] Schedule launch date
-- [ ] Reddit posts
-  - [ ] r/macOS
-  - [ ] r/MacOSBeta
-  - [ ] r/golang (show HN style)
-- [ ] Hacker News "Show HN"
-- [ ] Twitter thread showcasing best tweaks
-- [ ] Blog post: "25 Hidden macOS Tweaks Every Developer Should Know"
-  - [ ] SEO optimize for "macOS tweaks", "optimize mac"
-  - [ ] Link back to GitHub and afterdarksys.com
+- [ ] Use `SMAppService` for modern login-item, agent, and daemon inventory instead of
+  treating launchd files as the complete source of truth.
+- [ ] Add read-only Endpoint Security diagnostics when the required entitlement is
+  available; keep the core app useful without private entitlements.
+- [ ] Add NetworkExtension status and configuration diagnostics through public APIs.
+- [ ] Add Unified Logging queries via `OSLogStore` for tweak-related failures.
+- [ ] Add Disk Arbitration inventory and safe mount-policy diagnostics.
+- [ ] Add APFS snapshot and Time Machine status views with explicit read-only modes.
+- [ ] Add energy, thermal, battery-health, and power assertions diagnostics using
+  supported frameworks and tools.
+- [ ] Add privacy-permission visibility (TCC-facing guidance only; never bypass TCC).
+- [ ] Add a sandboxed custom-tweak format with schema validation, signed community
+  catalogs, explicit capabilities, and no arbitrary shell execution.
 
-### Content Marketing
-- [ ] YouTube walkthrough video
-- [ ] Create comparison: Before/After benchmarks
-  - [ ] Boot time improvements
-  - [ ] Animation speed demos
-- [ ] Case studies: "How Developer X Optimized Their Mac"
-- [ ] Tweet each tweak individually with screenshots
+## Product and UX
 
-### Community Building
-- [ ] GitHub Discussions setup
-  - [ ] "Share Your Setup" category
-  - [ ] "Tweak Requests" category
-- [ ] Discord/Slack community (optional)
-- [ ] Contributor guide
-- [ ] "Tweet your setup" feature in app
+- [ ] Search and filter by category, risk, support state, restart requirement, and
+  last-tested macOS version.
+- [ ] Show probe errors and remediation inline rather than only in dialogs or CLI text.
+- [ ] Add config import/export with validation, diff preview, and secret-safe output.
+- [ ] Add shell completion and machine-readable JSON output for automation.
+- [ ] Add progress and cancellation for large plans.
+- [ ] Improve accessibility, keyboard navigation, and VoiceOver labeling.
+- [ ] Write per-tweak documentation explaining effect, risk, requirements, and exact
+  rollback behavior.
 
----
+## Distribution and community
 
-## Features (v1.1+)
+- [ ] Add issue templates that request `doctor` output and a tweak ID.
+- [ ] Add contributor guidance and a checklist for safe tweak submissions.
+- [ ] Publish a Homebrew cask only after signing/notarization and release automation.
+- [ ] Consider fleet/MDM workflows as a separate authenticated product architecture;
+  do not extend the loopback web server into a remote management service.
 
-### More Tweaks - Expand Registry
-- [ ] **Screenshots**
-  - [ ] Change default format (PNG/JPG)
-  - [ ] Disable window shadow in screenshots
-  - [ ] Set default save location
-  - [ ] Include date in filename
-- [ ] **Time Machine**
-  - [ ] Disable local snapshots
-  - [ ] Prevent throttling during backup
-  - [ ] Exclude system files
-- [ ] **Trackpad**
-  - [ ] Enable three-finger drag
-  - [ ] Tap to click
-  - [ ] Tracking speed adjustments
-- [ ] **Keyboard**
-  - [ ] Key repeat rate
-  - [ ] Disable auto-correct
-  - [ ] Disable auto-capitalization
-  - [ ] Function keys default behavior
-- [ ] **Battery & Power**
-  - [ ] Show battery percentage
-  - [ ] Prevent sleep on lid close (external monitor)
-  - [ ] Disable power chime
-- [ ] **Activity Monitor**
-  - [ ] Show all processes by default
-  - [ ] Default sort by CPU
-  - [ ] Open at login
-- [ ] **Finder**
-  - [ ] Default to list view
-  - [ ] Show Library folder
-  - [ ] Disable "Are you sure?" on empty trash
-- [ ] **Dock**
-  - [ ] Icon size adjustments
-  - [ ] Minimize effects (Genie/Scale)
-  - [ ] Position (left/bottom/right)
+## Explicit non-goals
 
-### UI Enhancements
-- [ ] Icons for each category tab
-- [ ] Risk level color coding throughout
-- [ ] Export config button (share with friends)
-- [ ] Import config from file
-- [ ] Dark mode support (already works with Fyne, but test)
-- [ ] Search improvements: filter by category, risk level
-- [ ] Tweak details modal with more info
-- [ ] "Popular" badge on most-used tweaks (from analytics)
-
-### CLI Enhancements
-- [ ] Color-coded output (errors in red, success in green)
-- [ ] Progress indicators for batch operations
-- [ ] `--dry-run` flag for apply command
-- [ ] `--verbose` flag for detailed output
-- [ ] Interactive mode: `systweak interactive`
-- [ ] Shell completion (bash, zsh, fish)
-
-### Analytics & Insights (Opt-in)
-- [ ] Anonymous usage statistics
-  - [ ] Which tweaks are most popular
-  - [ ] macOS version distribution
-  - [ ] Error frequency tracking
-- [ ] Crash reporting (opt-in)
-- [ ] "You might also like..." suggestions based on popular combos
-
-### Social Features
-- [ ] Generate shareable "My Mac Setup" card
-  - [ ] Visual card with enabled tweaks
-  - [ ] "Optimized with After Dark System Tools" watermark
-- [ ] Export to Twitter/social media
-- [ ] Preset sharing: publish to community registry
-- [ ] Import community presets by URL
-
----
-
-## Pro Features (Upsell to afterdarksys.com)
-
-### Fleet Management (Enterprise)
-- [ ] Deploy configs to multiple Macs
-- [ ] Enforce compliance policies
-- [ ] Audit trail of changes
-- [ ] Centralized dashboard
-
-### Advanced Tweaks (Pro)
-- [ ] Scheduled tweak application
-- [ ] Environment-based profiles (Work/Home)
-- [ ] Network-based triggers
-- [ ] Integration with MDM solutions
-
-### Custom Tweak Builder
-- [ ] Visual editor for creating custom tweaks
-- [ ] Package as distributable
-- [ ] Sign and notarize packages
-
----
-
-## Technical Debt & Refactoring
-
-### Code Quality
-- [ ] Add unit tests
-  - [ ] Test tweak interface implementations
-  - [ ] Test state management
-  - [ ] Mock shell commands for testing
-- [ ] Integration tests
-  - [ ] Test actual system changes in VM
-- [ ] Documentation comments for exported functions
-- [ ] Linting: golangci-lint setup
-- [ ] CI pipeline: tests on push
-
-### Performance
-- [ ] Cache `IsApplied()` results to reduce shell calls
-- [ ] Parallel status checks on startup
-- [ ] Debounce search input in UI
-
-### Architecture
-- [ ] Consider plugin system for community tweaks
-- [ ] Separate tweak definitions into YAML/JSON for easier contribution
-- [ ] Abstract shell execution for testability
-
----
-
-## Distribution & Platform
-
-### Packaging
-- [ ] Signed and notarized .app bundle
-- [ ] DMG installer with custom background
-- [ ] Sparkle framework for auto-updates
-- [ ] Homebrew Cask support
-
-### Multi-Platform (Future)
-- [ ] Linux support (if feasible)
-- [ ] Windows support (different tweaks, same UI)
-
----
-
-## Community & Support
-
-### Documentation
-- [ ] Wiki with detailed tweak explanations
-  - [ ] What each tweak does technically
-  - [ ] Why you might want it
-  - [ ] Potential risks
-- [ ] FAQ section
-- [ ] Video tutorials
-- [ ] Contributing guide
-
-### Support Channels
-- [ ] GitHub Issues templates
-  - [ ] Bug report
-  - [ ] Feature request
-  - [ ] Tweak request
-- [ ] Commercial support offering
-  - [ ] Link to afterdarksys.com/support
-  - [ ] Priority bug fixes
-  - [ ] Custom tweak development
-
----
-
-## Metrics & Success
-
-### Track These KPIs
-- [ ] GitHub stars growth
-- [ ] Download/install count
-- [ ] Active users (if analytics enabled)
-- [ ] Conversion to afterdarksys.com
-  - [ ] Click-through rate on Pro features
-  - [ ] Contact form submissions from app
-- [ ] Community engagement
-  - [ ] GitHub Discussions activity
-  - [ ] Contributed tweaks
-  - [ ] Social media mentions
-
-### Growth Milestones
-- [ ] 100 GitHub stars (HN worthy)
-- [ ] 1,000 GitHub stars (Product Hunt trending)
-- [ ] Featured in newsletters (Go Weekly, macOS blogs)
-- [ ] 5,000+ downloads
-- [ ] First community-contributed tweak merged
-
----
-
-## Ideas for Future Versions
-
-### Advanced Features
-- Automated optimization recommendations based on system
-- Integration with Homebrew to auto-apply after `brew install`
-- Tweak profiles tied to physical location (work vs home)
-- Time-based tweaks (disable animations during meetings)
-- Compare with other users' setups anonymously
-
-### Gamification
-- Achievement system for trying tweaks
-- "Power User" leaderboard
-- Badges for different optimization levels
-
-### Integration
-- Alfred workflow
-- Raycast extension
-- Shell integration: `systweak toggle show-hidden-files`
-
----
-
-## Notes
-
-- Keep the free version genuinely useful (not crippled)
-- Focus on developer/power user audience initially
-- Use this as credibility builder for After Dark brand
-- Every feature should serve either:
-  1. User value (retention)
-  2. Viral growth (sharing)
-  3. Lead generation (links to products)
+- Bypassing Gatekeeper, SIP, TCC, or other macOS security controls.
+- Claiming unsupported settings are reversible.
+- Restoring guessed “factory defaults” when the original value was not recorded.
+- Accepting arbitrary shell fragments from the GUI, API, config, or community catalog.
+- Enabling analytics without explicit operator opt-in.

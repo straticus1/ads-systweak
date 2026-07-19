@@ -14,11 +14,11 @@ import (
 type SocketEntry struct {
 	PID         int    `json:"pid"`
 	ProcessName string `json:"processName"`
-	Protocol    string `json:"protocol"`  // TCP, UDP, TCP6, UDP6
-	LocalAddr   string `json:"localAddr"` // host:port
+	Protocol    string `json:"protocol"`   // TCP, UDP, TCP6, UDP6
+	LocalAddr   string `json:"localAddr"`  // host:port
 	RemoteAddr  string `json:"remoteAddr"` // host:port or "" if listening
-	State       string `json:"state"`     // ESTABLISHED, LISTEN, CLOSE_WAIT, etc.
-	User        string `json:"user"`      // username owning the socket
+	State       string `json:"state"`      // ESTABLISHED, LISTEN, CLOSE_WAIT, etc.
+	User        string `json:"user"`       // username owning the socket
 }
 
 // HandleGetTCPView handles GET /api/tcpview.
