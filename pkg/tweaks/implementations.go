@@ -1,10 +1,16 @@
 package tweaks
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"ads-systweak/pkg/backup"
+)
+
+var (
+	saveDefaultsBackup    = backup.SaveBackup
+	restoreDefaultsBackup = backup.Restore
 )
 
 type DefaultsTweak struct {
@@ -24,11 +30,11 @@ func NewDefaultsTweak(id, name, desc string, cat TweakCategory, risk RiskLevel, 
 	return &DefaultsTweak{id, name, desc, cat, risk, domain, key, valType, targetVal, restart}
 }
 
-func (d *DefaultsTweak) ID() string          { return d.id }
-func (d *DefaultsTweak) Name() string        { return d.name }
-func (d *DefaultsTweak) Description() string { return d.desc }
+func (d *DefaultsTweak) ID() string              { return d.id }
+func (d *DefaultsTweak) Name() string            { return d.name }
+func (d *DefaultsTweak) Description() string     { return d.desc }
 func (d *DefaultsTweak) Category() TweakCategory { return d.cat }
-func (d *DefaultsTweak) RiskLevel() RiskLevel { return d.risk }
+func (d *DefaultsTweak) RiskLevel() RiskLevel    { return d.risk }
 
 func (d *DefaultsTweak) IsApplied() (bool, error) {
 	out, err := RunShell(fmt.Sprintf("defaults read %s %s", d.domain, d.key))
@@ -46,7 +52,7 @@ func (d *DefaultsTweak) IsApplied() (bool, error) {
 		} else {
 			return false, fmt.Errorf("internal type error: expected bool for %s", d.ID())
 		}
-		
+
 		return out == expected || out == "true" || out == fmt.Sprintf("%v", d.targetVal), nil
 	}
 
@@ -83,66 +89,73 @@ func (d *DefaultsTweak) Apply() error {
 	}
 
 	cmd := fmt.Sprintf("defaults write %s %s %s %s", d.domain, d.key, typeFlag, valStr)
-	
+
 	if DryRun {
 		fmt.Printf("[DRY RUN] Apply DefaultsTweak (%s): %s\n", d.id, cmd)
 		return nil
 	}
-	
-	backup.SaveBackup(d.domain, d.key)
-	
+
+	if err := saveDefaultsBackup(d.domain, d.key); err != nil {
+		return fmt.Errorf("back up %s/%s: %w", d.domain, d.key, err)
+	}
+
 	_, err := RunShell(cmd)
 	if err != nil {
 		return err
 	}
 
 	if d.restartApp != "" {
-		RestartApp(d.restartApp)
+		if err := RestartApp(d.restartApp); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (d *DefaultsTweak) Revert() error {
-	cmd := fmt.Sprintf("defaults delete %s %s", d.domain, d.key)
-	
 	if DryRun {
-		fmt.Printf("[DRY RUN] Revert DefaultsTweak (%s): %s\n", d.id, cmd)
+		fmt.Printf("[DRY RUN] Restore DefaultsTweak (%s) from backup\n", d.id)
 		return nil
 	}
-	
-	backup.SaveBackup(d.domain, d.key)
-	
-	_, err := RunShell(cmd)
-	if err != nil && !strings.Contains(err.Error(), "does not exist") {
+
+	err := restoreDefaultsBackup(d.domain, d.key)
+	if errors.Is(err, backup.ErrNoBackup) {
+		_, err = RunCommand("/usr/bin/defaults", "delete", d.domain, d.key)
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
 	if d.restartApp != "" {
-		RestartApp(d.restartApp)
+		if err := RestartApp(d.restartApp); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 type CommandTweak struct {
-	id          string
-	name        string
-	desc        string
-	cat         TweakCategory
-	risk        RiskLevel
-	checkCmd    string
-	applyCmd    string
-	revertCmd   string
-	runAsRoot   bool
+	id        string
+	name      string
+	desc      string
+	cat       TweakCategory
+	risk      RiskLevel
+	checkCmd  string
+	applyCmd  string
+	revertCmd string
+	runAsRoot bool
 }
 
 func NewCommandTweak(id, name, desc string, cat TweakCategory, risk RiskLevel, check, apply, revert string, root bool) *CommandTweak {
 	return &CommandTweak{id, name, desc, cat, risk, check, apply, revert, root}
 }
 
-func (c *CommandTweak) ID() string          { return c.id }
-func (c *CommandTweak) Name() string        { return c.name }
-func (c *CommandTweak) Description() string { return c.desc }
+func (c *CommandTweak) ID() string              { return c.id }
+func (c *CommandTweak) Name() string            { return c.name }
+func (c *CommandTweak) Description() string     { return c.desc }
 func (c *CommandTweak) Category() TweakCategory { return c.cat }
-func (c *CommandTweak) RiskLevel() RiskLevel { return c.risk }
+func (c *CommandTweak) RiskLevel() RiskLevel    { return c.risk }
 
 func (c *CommandTweak) IsApplied() (bool, error) {
 	out, err := RunShell(c.checkCmd)
